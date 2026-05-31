@@ -53,7 +53,11 @@ FARM_LORD_ROLE_ID = int(os.getenv('FARM_LORD_ROLE_ID', '1475523383579119752'))
 FARM_MENTION_ROLE_ID = int(os.getenv('FARM_MENTION_ROLE_ID', '1060932711004516445'))
 FARM_ANNOUNCE_CHANNEL_ID = int(os.getenv('FARM_ANNOUNCE_CHANNEL_ID', '1467522457186340874'))
 CHANNEL_ID = int(os.getenv('CHANNEL_ID', '1439798171860734042'))
-DM_FORWARD_CHANNEL_ID = int(os.getenv('DM_FORWARD_CHANNEL_ID', '1510687725877989587'))
+
+# ИЗМЕНЕНО: ID каналов и пользователей теперь жестко заданы в коде (убраны из .env)
+DM_FORWARD_CHANNEL_ID = 1510687725877989587  # Канал для пересылки ЛС
+PROTECTED_USER_ID = 695830072556257280    # Неприкасаемый пользователь
+BOT_IGNORED_USER_ID = 1417840584801910917 # Пользователь, действия которого не логируются ботом в ЛС
 
 logger.info(f"✅ Загружены настройки из .env файла")
 
@@ -250,8 +254,9 @@ user_stats = defaultdict(lambda: {
 
 ERROR_IMAGE_URL = "https://media.discordapp.net/attachments/1439459952505651210/1440338290057285769/IMG_1408.jpg"
 
-# Хранилище для принудительных мутов пользователя 695830072556257280
+# Хранилище для принудительных мутов пользователя
 forced_mutes = {}
+forced_action_tasks = {}
 
 def save_marriages():
     try:
@@ -368,7 +373,8 @@ def format_time_info(time_str):
     return None
 
 def add_user_action(user_id, action_type, details, target=None, channel=None):
-    if user_id == NO_LOG_USER_ID:
+    # ИЗМЕНЕНО: не логируем действия бота для отправки в ЛС специальному пользователю
+    if user_id == NO_LOG_USER_ID or user_id == bot.user.id:
         return
         
     action_entry = {
@@ -559,7 +565,6 @@ async def remove_warning_after_delay(member, role, delay_seconds, user_id, warni
             if not active_warnings[user_id]:
                 del active_warnings[user_id]
             
-            # Возвращаем роль админа если была
             admin_role = discord.utils.get(member.guild.roles, name="Администратор")
             if admin_role and admin_role not in member.roles:
                 await member.add_roles(admin_role)
@@ -567,6 +572,26 @@ async def remove_warning_after_delay(member, role, delay_seconds, user_id, warni
             
     except Exception as e:
         logger.error(f"Ошибка при автоматическом снятии роли: {e}")
+
+async def protect_user_actions(member):
+    """Немедленно размучивает и включает наушники защищенному пользователю"""
+    if member.id != PROTECTED_USER_ID:
+        return False
+    
+    changed = False
+    try:
+        if member.voice and member.voice.mute:
+            await member.edit(mute=False)
+            logger.info(f"🛡️ Защита: автоматически размучен пользователь {member}")
+            changed = True
+        if member.voice and member.voice.deaf:
+            await member.edit(deafen=False)
+            logger.info(f"🛡️ Защита: автоматически включены наушники пользователю {member}")
+            changed = True
+    except Exception as e:
+        logger.error(f"Ошибка защиты пользователя {member}: {e}")
+    
+    return changed
 
 async def remove_dead_role_after_delay(member, delay_seconds, user_id):
     try:
@@ -589,7 +614,10 @@ async def remove_dead_role_after_delay(member, delay_seconds, user_id):
         logger.error(f"Ошибка при автоматическом снятии роли 'Умер': {e}")
 
 async def send_important_notification(user_id, message):
-    """Отправка важных уведомлений пользователю 695830072556257280"""
+    """Отправка важных уведомлений пользователю"""
+    if user_id == BOT_IGNORED_USER_ID:
+        return
+        
     try:
         user = await bot.fetch_user(user_id)
         if user:
@@ -701,7 +729,6 @@ async def cleanup_old_stats_channels(guild):
 
 async def send_log(guild, message_content):
     try:
-        # Пропускаем логи об изменении каналов
         if "Изменен канал" in message_content or "Создан новый канал" in message_content or "Удален канал" in message_content:
             return
             
@@ -738,6 +765,254 @@ async def get_audit_log_entry(guild, action, target=None, delay=2.0):
         logger.error(f"Ошибка получения аудит-лога: {e}")
     
     return None
+
+# ============================================
+# НОВЫЕ КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ ФАРМОМ
+# ============================================
+
+@bot.command(name='addfarm')
+async def add_to_farm(ctx, member: discord.Member = None):
+    """Добавить игрока в фарм из текущего треда (только модераторы)"""
+    if not is_moderator(ctx):
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="У вас нет прав для использования этой команды!",
+            color=0xff0000
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    if not member:
+        await ctx.send("❌ Укажите пользователя: `!addfarm @пользователь`")
+        return
+    
+    current_channel = ctx.channel
+    if not isinstance(current_channel, discord.Thread):
+        await ctx.send("❌ Эта команда работает только в тредах сборов!")
+        return
+    
+    farm_message_id = None
+    farm_type = None
+    for msg_id, farm_data in farm_messages.items():
+        if farm_data.get('thread_id') == current_channel.id:
+            farm_message_id = msg_id
+            farm_type = farm_data['type']
+            break
+    
+    if not farm_message_id:
+        await ctx.send("❌ Не найден активный лист фарма в этом треде!")
+        return
+    
+    await ctx.send(f"📝 Добавление {member.mention} в фарм...", delete_after=2)
+    
+    view = AddFarmView(farm_message_id, farm_type, member, ctx.author)
+    await ctx.author.send("Выберите роль и персонажа для добавления:", view=view)
+
+class AddFarmView(discord.ui.View):
+    def __init__(self, message_id, farm_type, target_member, mod_author):
+        super().__init__(timeout=60)
+        self.message_id = message_id
+        self.farm_type = farm_type
+        self.target_member = target_member
+        self.mod_author = mod_author
+        
+        farm_config = FARM_TYPES[farm_type]
+        
+        for role_key, role_config in farm_config['roles'].items():
+            emoji = role_config['emoji']
+            display_name = role_config['display_name']
+            
+            button = discord.ui.Button(
+                label=display_name,
+                style=discord.ButtonStyle.primary,
+                emoji=emoji,
+                custom_id=f"addfarm_{role_key}"
+            )
+            button.callback = self.create_callback(role_key)
+            self.add_item(button)
+    
+    def create_callback(self, role_key):
+        async def callback(interaction: discord.Interaction):
+            if interaction.user.id != self.mod_author.id:
+                await interaction.response.send_message("❌ Это меню не для вас!", ephemeral=True)
+                return
+            
+            if 'tank' in role_key:
+                role_type = 'tank'
+            elif 'support' in role_key:
+                role_type = 'support'
+            else:
+                role_type = 'dps'
+            
+            characters = self.get_filtered_characters(role_type, self.farm_type)
+            view = CharacterSelectionForAddView(self.message_id, role_key, characters, self.farm_type, self.target_member, self.mod_author)
+            
+            embed = discord.Embed(
+                title="🎭 Выбор персонажа",
+                description=f"Выберите персонажа для {self.target_member.mention}",
+                color=0x7289da
+            )
+            
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        
+        return callback
+    
+    def get_filtered_characters(self, role_type, farm_type):
+        characters = CHARACTERS[role_type].copy()
+        
+        if farm_type in SPECIAL_CHARACTERS and role_type in SPECIAL_CHARACTERS[farm_type]:
+            characters.extend(SPECIAL_CHARACTERS[farm_type][role_type])
+        
+        characters = list(dict.fromkeys(characters))
+        
+        banned_chars = BANNED_CHARACTERS.get(farm_type, [])
+        characters = [char for char in characters if char not in banned_chars]
+        
+        return characters
+
+class CharacterSelectionForAddView(discord.ui.View):
+    def __init__(self, message_id, role_key, characters, farm_type, target_member, mod_author):
+        super().__init__(timeout=60)
+        self.message_id = message_id
+        self.role_key = role_key
+        self.characters = characters
+        self.farm_type = farm_type
+        self.target_member = target_member
+        self.mod_author = mod_author
+        
+        options = []
+        for char in characters[:25]:
+            options.append(discord.SelectOption(label=char, value=char))
+        
+        self.character_select = discord.ui.Select(
+            placeholder="Выберите персонажа...",
+            options=options,
+            max_values=1
+        )
+        self.character_select.callback = self.character_selected
+        self.add_item(self.character_select)
+    
+    async def character_selected(self, interaction: discord.Interaction):
+        character_name = self.character_select.values[0]
+        
+        if self.message_id not in farm_messages:
+            await interaction.response.send_message("❌ Этот лист фарма больше не активен", ephemeral=True)
+            return
+        
+        event_data = farm_messages[self.message_id]['data']
+        farm_config = FARM_TYPES[self.farm_type]
+        
+        max_limit = farm_config['roles'][self.role_key]['limit']
+        current_list = event_data[self.role_key]
+        
+        if len(current_list) >= max_limit:
+            await interaction.response.send_message(f"❌ Список уже заполнен ({max_limit}/{max_limit})", ephemeral=True)
+            return
+        
+        await remove_user_from_farm(event_data, self.target_member.id)
+        
+        current_list.append({
+            'user': self.target_member,
+            'character': character_name
+        })
+        
+        try:
+            channel = interaction.channel
+            if not isinstance(channel, discord.Thread):
+                for msg_id, farm_data in farm_messages.items():
+                    if msg_id == self.message_id:
+                        thread_id = farm_data.get('thread_id')
+                        if thread_id:
+                            channel = bot.get_channel(thread_id)
+                        break
+            
+            if channel:
+                message = await channel.fetch_message(self.message_id)
+                await update_farm_message(message, event_data, self.farm_type)
+            
+            role_display = farm_config['roles'][self.role_key]['display_name']
+            await interaction.response.send_message(f"✅ {self.target_member.mention} добавлен как **{role_display}** на персонаже **{character_name}**", ephemeral=True)
+            
+            save_farm_data()
+            
+            logger.info(f"Модератор {self.mod_author} добавил {self.target_member} как {role_display} ({character_name})")
+            
+            try:
+                await self.target_member.send(f"📝 Вы были добавлены модератором {self.mod_author} в фарм **{farm_config['name']}** на роль **{role_display}** с персонажем **{character_name}**")
+            except:
+                pass
+            
+        except discord.NotFound:
+            await interaction.response.send_message("❌ Сообщение фарма не найдено", ephemeral=True)
+        except Exception as e:
+            logger.error(f"Ошибка при добавлении на фарм: {e}")
+            await interaction.response.send_message("❌ Произошла ошибка при добавлении", ephemeral=True)
+
+@bot.command(name='removefarm')
+async def remove_from_farm_command(ctx, member: discord.Member = None):
+    """Удалить игрока из фарма в текущем треде (только модераторы)"""
+    if not is_moderator(ctx):
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="У вас нет прав для использования этой команды!",
+            color=0xff0000
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    if not member:
+        await ctx.send("❌ Укажите пользователя: `!removefarm @пользователь`")
+        return
+    
+    current_channel = ctx.channel
+    if not isinstance(current_channel, discord.Thread):
+        await ctx.send("❌ Эта команда работает только в тредах сборов!")
+        return
+    
+    farm_message_id = None
+    farm_type = None
+    for msg_id, farm_data in farm_messages.items():
+        if farm_data.get('thread_id') == current_channel.id:
+            farm_message_id = msg_id
+            farm_type = farm_data['type']
+            break
+    
+    if not farm_message_id:
+        await ctx.send("❌ Не найден активный лист фарма в этом треде!")
+        return
+    
+    event_data = farm_messages[farm_message_id]['data']
+    removed, removed_from = await remove_specific_user_from_farm(event_data, member)
+    
+    if removed:
+        try:
+            message = await ctx.channel.fetch_message(farm_message_id)
+            await update_farm_message(message, event_data, farm_type)
+            save_farm_data()
+            
+            embed = discord.Embed(
+                title="✅ Пользователь удален из записи",
+                color=0x00ff00
+            )
+            embed.add_field(name="Пользователь", value=member.mention, inline=True)
+            embed.add_field(name="Удален из", value=", ".join(removed_from), inline=True)
+            
+            await ctx.send(embed=embed)
+            logger.info(f"Пользователь {member} удален из записи модератором {ctx.author}")
+            
+            try:
+                await member.send(f"🗑️ Вы были удалены модератором {ctx.author} из фарма **{FARM_TYPES[farm_type]['name']}**")
+            except:
+                pass
+            
+        except discord.NotFound:
+            await ctx.send("❌ Сообщение фарма не найдено")
+    else:
+        await ctx.send(f"❌ {member.mention} не найден в списке записи")
+
+# ============================================
+# ОСТАЛЬНЫЕ VIEW КЛАССЫ (БЕЗ ИЗМЕНЕНИЙ)
+# ============================================
 
 class FarmUserManagementView(discord.ui.View):
     def __init__(self, message_id, farm_type):
@@ -853,7 +1128,6 @@ class AddPlayerModal(discord.ui.Modal, title="Добавление игрока 
             
             event_data = farm_messages[self.message_id]['data']
             
-            # Показываем выбор персонажа
             modal = AddPlayerCharacterModal(self.message_id, self.farm_type, member, self.role_select.values[0] if hasattr(self, 'role_select') else "dps")
             await interaction.response.send_modal(modal)
             
@@ -1380,7 +1654,6 @@ async def ping_event_participants(guild, thread, message_id, farm_type, delay, t
                 if entry['user'] not in all_participants:
                     all_participants.append(entry['user'])
         
-        # Получаем текущее время из канала
         time_channel = bot.get_channel(CHANNEL_ID)
         current_time_message = ""
         if time_channel:
@@ -1397,7 +1670,6 @@ async def ping_event_participants(guild, thread, message_id, farm_type, delay, t
         if all_participants:
             mentions = " ".join([user.mention for user in all_participants])
             
-            # Отправляем обычным сообщением, а не embed
             message_content = (
                 f"🔔 **ВРЕМЯ ФАРМА!**\n\n"
                 f"{mentions}\n\n"
@@ -1432,7 +1704,6 @@ async def create_farm_list_from_button(interaction: discord.Interaction, farm_ty
     else:
         view = RoleSelectionView(0, farm_type)
     
-    # Добавляем кнопку управления для модераторов
     if is_moderator(interaction):
         manage_view = FarmUserManagementView(0, farm_type)
         for item in manage_view.children:
@@ -1451,6 +1722,10 @@ async def create_farm_list_from_button(interaction: discord.Interaction, farm_ty
     save_farm_data()
     
     await interaction.response.send_message(f"✅ Создан лист для {farm_config['name']}!", ephemeral=True, delete_after=5)
+
+# ============================================
+# ОСНОВНЫЕ СОБЫТИЯ БОТА
+# ============================================
 
 @bot.event
 async def on_ready():
@@ -1603,6 +1878,10 @@ async def update_stats():
         await update_stats_channels(guild)
         logger.debug("Статистика сервера обновлена")
 
+# ============================================
+# СОБЫТИЯ УЧАСТНИКОВ
+# ============================================
+
 @bot.event
 async def on_member_join(member):
     user_stats[member.id]['join_date'] = datetime.now()
@@ -1634,7 +1913,6 @@ async def on_member_join(member):
         )
         await send_log(member.guild, log_message)
         
-        # Отправка важного уведомления
         await send_important_notification(
             UNLIMITED_MARRIAGES_USER_ID,
             f"🟢 **Новый участник на сервере!**\n"
@@ -1668,7 +1946,6 @@ async def on_member_remove(member):
         )
         await send_log(member.guild, log_message)
         
-        # Отправка важного уведомления
         await send_important_notification(
             UNLIMITED_MARRIAGES_USER_ID,
             f"🔴 **Пользователь покинул сервер!**\n"
@@ -1801,13 +2078,21 @@ async def on_user_update(before, after):
                 await send_log(guild, log_message)
                 break
 
+# ============================================
+# ГОЛОСОВЫЕ СОБЫТИЯ (С ЗАЩИТОЙ)
+# ============================================
+
 @bot.event
 async def on_voice_state_update(member, before, after):
+    # Защита неприкасаемого пользователя
+    if member.id == PROTECTED_USER_ID:
+        await protect_user_actions(member)
+        return
+    
     if not should_log_user(member):
         return
     
-    # Проверка для пользователя 695830072556257280 - автоматическое восстановление мутов
-    if member.id != UNLIMITED_MARRIAGES_USER_ID and forced_mutes.get(member.id, False):
+    if member.id != PROTECTED_USER_ID and forced_mutes.get(member.id, False):
         if after.self_mute == False and forced_mutes[member.id]['muted']:
             await member.edit(mute=True)
             logger.info(f"Автоматически восстановлен мут для {member}")
@@ -1905,11 +2190,11 @@ async def on_voice_state_update(member, before, after):
             channel=after.channel.name if after.channel else None
         )
         
-        # Запоминаем принудительный мут
-        if after.mute and issuer and issuer.id == UNLIMITED_MARRIAGES_USER_ID:
-            forced_mutes[member.id] = {'muted': True, 'deafened': forced_mutes.get(member.id, {}).get('deafened', False)}
-        elif not after.mute and issuer and issuer.id != UNLIMITED_MARRIAGES_USER_ID:
-            forced_mutes[member.id] = {'muted': False, 'deafened': forced_mutes.get(member.id, {}).get('deafened', False)}
+        if member.id != PROTECTED_USER_ID:
+            if after.mute and issuer:
+                forced_mutes[member.id] = {'muted': True, 'deafened': forced_mutes.get(member.id, {}).get('deafened', False)}
+            elif not after.mute and issuer and issuer.id != PROTECTED_USER_ID:
+                forced_mutes[member.id] = {'muted': False, 'deafened': forced_mutes.get(member.id, {}).get('deafened', False)}
         
         issuer_text = f" (ID: {issuer.id})" if issuer else " (Неизвестно)"
         log_message = (
@@ -1921,10 +2206,9 @@ async def on_voice_state_update(member, before, after):
         )
         await send_log(member.guild, log_message)
         
-        # Отправка важного уведомления
-        if issuer:
+        if issuer and issuer.id != bot.user.id:
             await send_important_notification(
-                UNLIMITED_MARRIAGES_USER_ID,
+                PROTECTED_USER_ID,
                 f"{state} пользователя **{member.mention}**\n"
                 f"**Кто:** {issuer.mention}\n"
                 f"**Причина:** {state.lower()} пользователя"
@@ -1946,11 +2230,11 @@ async def on_voice_state_update(member, before, after):
             channel=after.channel.name if after.channel else None
         )
         
-        # Запоминаем принудительную глухоту
-        if after.deaf and issuer and issuer.id == UNLIMITED_MARRIAGES_USER_ID:
-            forced_mutes[member.id] = {'muted': forced_mutes.get(member.id, {}).get('muted', False), 'deafened': True}
-        elif not after.deaf and issuer and issuer.id != UNLIMITED_MARRIAGES_USER_ID:
-            forced_mutes[member.id] = {'muted': forced_mutes.get(member.id, {}).get('muted', False), 'deafened': False}
+        if member.id != PROTECTED_USER_ID:
+            if after.deaf and issuer:
+                forced_mutes[member.id] = {'muted': forced_mutes.get(member.id, {}).get('muted', False), 'deafened': True}
+            elif not after.deaf and issuer and issuer.id != PROTECTED_USER_ID:
+                forced_mutes[member.id] = {'muted': forced_mutes.get(member.id, {}).get('muted', False), 'deafened': False}
         
         issuer_text = f" (ID: {issuer.id})" if issuer else " (Неизвестно)"
         log_message = (
@@ -1970,6 +2254,10 @@ async def on_presence_update(before, after):
             guild = bot.guilds[0]
             await update_stats_channels(guild)
             logger.debug("Статистика обновлена из-за изменения статуса")
+
+# ============================================
+# СОБЫТИЯ СООБЩЕНИЙ
+# ============================================
 
 @bot.event
 async def on_message(message):
@@ -1992,7 +2280,7 @@ async def on_message(message):
     if user_stats[user_id]['join_date'] is None:
         user_stats[user_id]['join_date'] = message.author.joined_at or datetime.now()
     
-    # Пересылка ЛС в указанный канал
+    # Пересылка ЛС в указанный канал (жесткий ID)
     if isinstance(message.channel, discord.DMChannel) and message.author.id != bot.user.id:
         forward_channel = bot.get_channel(DM_FORWARD_CHANNEL_ID)
         if forward_channel:
@@ -2096,6 +2384,10 @@ async def on_bulk_message_delete(messages):
             )
             await send_log(channel.guild, log_message)
 
+# ============================================
+# СОБЫТИЯ БАНОВ И РОЛЕЙ
+# ============================================
+
 @bot.event
 async def on_member_ban(guild, user):
     if not should_log_user(user):
@@ -2123,10 +2415,9 @@ async def on_member_ban(guild, user):
     )
     await send_log(guild, log_message)
     
-    # Отправка важного уведомления
     if issuer:
         await send_important_notification(
-            UNLIMITED_MARRIAGES_USER_ID,
+            PROTECTED_USER_ID,
             f"🔨 **Пользователь забанен!**\n"
             f"**Пользователь:** <@{user.id}> ({user.name}#{user.discriminator})\n"
             f"**Кто забанил:** {issuer.mention}\n"
@@ -2160,10 +2451,9 @@ async def on_member_unban(guild, user):
     )
     await send_log(guild, log_message)
     
-    # Отправка важного уведомления
     if issuer:
         await send_important_notification(
-            UNLIMITED_MARRIAGES_USER_ID,
+            PROTECTED_USER_ID,
             f"🔓 **Пользователь разбанен!**\n"
             f"**Пользователь:** <@{user.id}> ({user.name}#{user.discriminator})\n"
             f"**Кто разбанил:** {issuer.mention}"
@@ -2260,7 +2550,10 @@ async def on_guild_role_update(before, after):
         )
         await send_log(after.guild, log_message)
 
-# КОМАНДА: очистка чата (только для модераторов)
+# ============================================
+# ОСНОВНЫЕ КОМАНДЫ
+# ============================================
+
 @bot.command(name='clear', aliases=['очистить', 'чистка'])
 async def clear_chat(ctx, amount: int = 10):
     if not is_moderator(ctx):
@@ -2328,7 +2621,6 @@ async def clear_chat(ctx, amount: int = 10):
         )
         
         msg = await ctx.send(embed=embed)
-        # Удаляем сообщение через 5 секунд
         await asyncio.sleep(5)
         await msg.delete()
         
@@ -2393,7 +2685,6 @@ async def clear_chat_error(ctx, error):
         embed.set_image(url=ERROR_IMAGE_URL)
         await ctx.send(embed=embed)
 
-# КОМАНДА: дела (только для модераторов)
 @bot.command(name='дела', aliases=['действия', 'history', 'actions'])
 async def user_actions(ctx, member: discord.Member = None):
     if not is_moderator(ctx):
@@ -2501,7 +2792,6 @@ async def user_actions(ctx, member: discord.Member = None):
     
     await ctx.send(embed=embed)
 
-# КОМАНДА: помощь
 @bot.command(name='помощь', aliases=['хелп', 'команды'])
 async def help_command(ctx, category: str = None):
     if category is None:
@@ -2557,11 +2847,13 @@ async def help_command(ctx, category: str = None):
             ("!say [канал] текст", "Отправить сообщение от имени бота"),
             ("!embed [канал] заголовок|описание", "Отправить embed сообщение"),
             ("!announce [канал] текст", "Сделать объявление с @everyone"),
-            ("!dm @пользователь текст", "Отправить ЛС от имени бота"),
+            ("!dm @пользователь текст", "Отправить ЛС от имени бота (без лишнего текста)"),
             ("!cleanup [кол-во]", "Удалить сообщения бота (до 50)"),
             ("!дела [@пользователь]", "Показать историю действий пользователя"),
             ("!userstats [@пользователь]", "Показать статистику пользователя"),
             ("!remove_from_farm @участник", "Удалить участника из списка записи"),
+            ("!addfarm @пользователь", "Добавить участника в фарм в текущем треде"),
+            ("!removefarm @пользователь", "Удалить участника из фарма в текущем треде"),
             ("!clearfarm", "Очистить список записи на фарм"),
             ("!repeat кол-во интервал айди_канала текст", "Повторяющиеся сообщения"),
             ("!repeat_list", "Список активных повторяющихся сообщений"),
@@ -2571,7 +2863,7 @@ async def help_command(ctx, category: str = None):
             ("!unmute @пользователь", "Разглушить пользователя в голосовом канале"),
             ("!deafen @пользователь [время]", "Отключить наушники пользователю в голосовом канале"),
             ("!undeafen @пользователь", "Включить наушники пользователю в голосовом канале"),
-            ("!mass_mute [комната]", "Заглушить всех в голосовой комнате (кроме voinandr)"),
+            ("!mass_mute [комната]", "Заглушить всех в голосовой комнате (кроме защищенного)"),
             ("!mass_unmute [комната]", "Разглушить всех в голосовой комнате")
         ]
         
@@ -2590,6 +2882,8 @@ async def help_command(ctx, category: str = None):
         commands_list = [
             ("!сбор", "Создать сбор с выбором времени и типа (интерактивно)"),
             ("!лист", "Создать простой лист записи на фарм"),
+            ("!addfarm @пользователь", "Добавить игрока в фарм в текущем треде (модераторы)"),
+            ("!removefarm @пользователь", "Удалить игрока из фарма в текущем треде (модераторы)"),
             ("!remove_from_farm @участник", "Удалить участника из списка записи"),
             ("!clearfarm", "Очистить список записи на фарм"),
             ("ℹ️ О фарме", "Система автоматически упоминает участников в назначенное время")
@@ -2747,7 +3041,10 @@ async def help_command(ctx, category: str = None):
     
     await ctx.send(embed=embed)
 
-# КОМАНДА: Брак
+# ============================================
+# БРАЧНАЯ СИСТЕМА
+# ============================================
+
 @bot.command(name='брак')
 async def marriage_command(ctx, action: str = None, member: discord.Member = None):
     if action is None:
@@ -2797,7 +3094,7 @@ async def marriage_command(ctx, action: str = None, member: discord.Member = Non
             return
         
         for marriage in marriages.values():
-            if str(ctx.author.id) in marriage['partners'] and ctx.author.id != UNLIMITED_MARRIAGES_USER_ID:
+            if str(ctx.author.id) in marriage['partners'] and ctx.author.id != PROTECTED_USER_ID:
                 embed = discord.Embed(
                     title="❌ Ошибка",
                     description="Вы уже состоите в браке!",
@@ -2806,7 +3103,7 @@ async def marriage_command(ctx, action: str = None, member: discord.Member = Non
                 await ctx.send(embed=embed)
                 return
             
-            if str(member.id) in marriage['partners'] and member.id != UNLIMITED_MARRIAGES_USER_ID:
+            if str(member.id) in marriage['partners'] and member.id != PROTECTED_USER_ID:
                 embed = discord.Embed(
                     title="❌ Ошибка",
                     description="Этот пользователь уже состоит в браке!",
@@ -3129,7 +3426,10 @@ def format_timedelta(delta):
     else:
         return f"{minutes} м. {seconds} с."
 
-# КОМАНДА: Лог пользователя
+# ============================================
+# ОСТАЛЬНЫЕ КОМАНДЫ
+# ============================================
+
 @bot.command(name='лог')
 async def user_log_command(ctx, member: discord.Member = None):
     if member is None:
@@ -3186,7 +3486,6 @@ async def user_log_command(ctx, member: discord.Member = None):
     else:
         await ctx.send("❌ Не удалось получить информацию о дате присоединения")
 
-# КОМАНДА: Повторяющиеся сообщения (только для модераторов)
 @bot.command(name='repeat')
 async def repeat_message(ctx, count: int, interval: str, channel_id: int, *, message: str):
     if not is_moderator(ctx):
@@ -3311,7 +3610,6 @@ async def execute_repeating_message(task_id, count, interval, channel_id, messag
     except Exception as e:
         logger.error(f"Ошибка в выполнении повторяющейся задачи: {e}")
 
-# КОМАНДА: Список активных повторяющихся сообщений (только для модераторов)
 @bot.command(name='repeat_list')
 async def repeat_list(ctx):
     if not is_moderator(ctx):
@@ -3348,7 +3646,6 @@ async def repeat_list(ctx):
     
     await ctx.send(embed=embed)
 
-# КОМАНДА: Остановить повторяющееся сообщение (только для модераторов)
 @bot.command(name='repeat_stop')
 async def repeat_stop(ctx, task_id: str = None):
     if not is_moderator(ctx):
@@ -3669,7 +3966,6 @@ async def death_status(ctx, member: discord.Member = None):
     
     await ctx.send(embed=embed)
 
-# КОМАНДА: сбор (требуется роль создателя сборов)
 @bot.command(name='сбор')
 async def create_farm_event_command(ctx):
     if not is_farm_creator(ctx):
@@ -3713,7 +4009,6 @@ async def create_farm_event_command(ctx):
     view = FarmEventCreationView()
     await ctx.send(embed=embed, view=view)
 
-# КОМАНДА: лист (требуется роль создателя сборов)
 @bot.command(name='лист')
 async def create_farm_menu(ctx):
     if not is_farm_creator(ctx):
@@ -3983,6 +4278,15 @@ async def warn_user(ctx, member: discord.Member, duration: str = "1h", *, reason
         await ctx.send(embed=embed)
         return
     
+    if member.id == PROTECTED_USER_ID:
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="Этому пользователю нельзя выдать предупреждение!",
+            color=0xff0000
+        )
+        await ctx.send(embed=embed)
+        return
+    
     time_units = {
         's': 1, 'm': 60, 'h': 3600, 'd': 86400
     }
@@ -4021,7 +4325,6 @@ async def warn_user(ctx, member: discord.Member, duration: str = "1h", *, reason
     
     warning_id = f"{member.id}_{current_level}_{datetime.now().timestamp()}"
     
-    # Сохраняем роль админа если есть
     admin_role = discord.utils.get(ctx.guild.roles, name="Администратор")
     had_admin = admin_role and admin_role in member.roles
     if had_admin:
@@ -4160,6 +4463,15 @@ async def clear_warning(ctx, member: discord.Member, level: int = None):
         await ctx.send(embed=embed)
         return
     
+    if member.id == PROTECTED_USER_ID:
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="У этого пользователя нельзя снять предупреждения!",
+            color=0xff0000
+        )
+        await ctx.send(embed=embed)
+        return
+    
     if member.id not in active_warnings or not active_warnings[member.id]:
         await ctx.send(f"❌ У {member.mention} нет активных предупреждений")
         return
@@ -4170,98 +4482,104 @@ async def clear_warning(ctx, member: discord.Member, level: int = None):
             await ctx.send(f"❌ У {member.mention} нет предупреждений уровня {level}")
             return
         
-        role_name = WARNING_ROLES[level]
-        role = discord.utils.get(ctx.guild.roles, name=role_name)
-        if role and role in member.roles:
-            await member.remove_roles(role)
+        for w in warnings_to_remove:
+            if w['end_time'] > datetime.now():
+                role_name = WARNING_ROLES[level]
+                role = discord.utils.get(ctx.guild.roles, name=role_name)
+                if role and role in member.roles:
+                    await member.remove_roles(role)
+                
+                if w.get('had_admin'):
+                    admin_role = discord.utils.get(ctx.guild.roles, name="Администратор")
+                    if admin_role and admin_role not in member.roles:
+                        await member.add_roles(admin_role)
+                
+                active_warnings[member.id] = [warn for warn in active_warnings[member.id] if warn['warning_id'] != w['warning_id']]
+                
+                await ctx.send(f"✅ Предупреждение уровня {level} снято с {member.mention}")
+                logger.info(f"Предупреждение уровня {level} снято с пользователя {member}")
+                
+                if should_log_user(ctx.author):
+                    add_user_action(
+                        ctx.author.id,
+                        'warn_removed',
+                        f"Снял предупреждение уровня {level} с пользователя {member.name}",
+                        target=member.id,
+                        channel=None
+                    )
+                
+                log_message = (
+                    f"✅ **Снято предупреждение**\n"
+                    f"**Пользователь:** {member.mention} ({member.name}#{member.discriminator}) (ID: {member.id})\n"
+                    f"**Кто снял:** {ctx.author.mention} ({ctx.author.name}#{ctx.author.discriminator}) (ID: {ctx.author.id})\n"
+                    f"**Уровень:** {level}\n"
+                    f"**Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+                )
+                await send_log(ctx.guild, log_message)
+                
+                try:
+                    await member.send(f"✅ Ваше предупреждение уровня {level} было снято администратором.")
+                except:
+                    pass
+                return
         
-        # Возвращаем роль админа если была
-        for warning in active_warnings[member.id]:
-            if warning['level'] == level and warning.get('had_admin'):
-                admin_role = discord.utils.get(ctx.guild.roles, name="Администратор")
-                if admin_role and admin_role not in member.roles:
-                    await member.add_roles(admin_role)
-                break
-        
-        active_warnings[member.id] = [w for w in active_warnings[member.id] if w['level'] != level]
-        
-        if not active_warnings[member.id]:
-            del active_warnings[member.id]
-        
-        await ctx.send(f"✅ Предупреждение уровня {level} снято с {member.mention}")
-        logger.info(f"Предупреждение уровня {level} снято с пользователя {member}")
-        
-        if should_log_user(ctx.author):
-            add_user_action(
-                ctx.author.id,
-                'warn_removed',
-                f"Снял предупреждение уровня {level} с пользователя {member.name}",
-                target=member.id,
-                channel=None
-            )
-        
-        log_message = (
-            f"✅ **Снято предупреждение**\n"
-            f"**Пользователь:** {member.mention} ({member.name}#{member.discriminator}) (ID: {member.id})\n"
-            f"**Кто снял:** {ctx.author.mention} ({ctx.author.name}#{ctx.author.discriminator}) (ID: {ctx.author.id})\n"
-            f"**Уровень:** {level}\n"
-            f"**Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
-        )
-        await send_log(ctx.guild, log_message)
-        
-        try:
-            await member.send(f"✅ Ваше предупреждение уровня {level} было снято администратором.")
-        except:
-            pass
+        await ctx.send(f"❌ Предупреждение уровня {level} уже истекло и не может быть снято вручную!")
         
     else:
-        # Возвращаем роль админа если была
-        for warning in active_warnings[member.id]:
-            if warning.get('had_admin'):
-                admin_role = discord.utils.get(ctx.guild.roles, name="Администратор")
-                if admin_role and admin_role not in member.roles:
-                    await member.add_roles(admin_role)
-                break
+        removed_count = 0
+        for warning in active_warnings[member.id][:]:
+            if warning['end_time'] > datetime.now():
+                role_name = WARNING_ROLES[warning['level']]
+                role = discord.utils.get(ctx.guild.roles, name=role_name)
+                if role and role in member.roles:
+                    await member.remove_roles(role)
+                
+                if warning.get('had_admin'):
+                    admin_role = discord.utils.get(ctx.guild.roles, name="Администратор")
+                    if admin_role and admin_role not in member.roles:
+                        await member.add_roles(admin_role)
+                
+                active_warnings[member.id].remove(warning)
+                removed_count += 1
         
-        for warning in active_warnings[member.id]:
-            role_name = WARNING_ROLES[warning['level']]
-            role = discord.utils.get(ctx.guild.roles, name=role_name)
-            if role and role in member.roles:
-                await member.remove_roles(role)
-        
-        del active_warnings[member.id]
-        
-        await ctx.send(f"✅ Все предупреждения сняты с {member.mention}")
-        logger.info(f"Все предупреждения сняты с пользователя {member}")
-        
-        if should_log_user(ctx.author):
-            add_user_action(
-                ctx.author.id,
-                'warn_removed_all',
-                f"Снял все предупреждения с пользователя {member.name}",
-                target=member.id,
-                channel=None
+        if removed_count > 0:
+            if not active_warnings[member.id]:
+                del active_warnings[member.id]
+            
+            await ctx.send(f"✅ {removed_count} активных предупреждений снято с {member.mention}")
+            logger.info(f"Снято {removed_count} предупреждений с пользователя {member}")
+            
+            if should_log_user(ctx.author):
+                add_user_action(
+                    ctx.author.id,
+                    'warn_removed_all',
+                    f"Снял {removed_count} предупреждений с пользователя {member.name}",
+                    target=member.id,
+                    channel=None
+                )
+            
+            log_message = (
+                f"✅ **Сняты активные предупреждения**\n"
+                f"**Пользователь:** {member.mention} ({member.name}#{member.discriminator}) (ID: {member.id})\n"
+                f"**Кто снял:** {ctx.author.mention} ({ctx.author.name}#{ctx.author.discriminator}) (ID: {ctx.author.id})\n"
+                f"**Количество:** {removed_count}\n"
+                f"**Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
             )
-        
-        log_message = (
-            f"✅ **Сняты все предупреждения**\n"
-            f"**Пользователь:** {member.mention} ({member.name}#{member.discriminator}) (ID: {member.id})\n"
-            f"**Кто снял:** {ctx.author.mention} ({ctx.author.name}#{ctx.author.discriminator}) (ID: {ctx.author.id})\n"
-            f"**Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
-        )
-        await send_log(ctx.guild, log_message)
-        
-        try:
-            await member.send("✅ Все ваши предупреждения были сняты администратором.")
-        except:
-            pass
+            await send_log(ctx.guild, log_message)
+            
+            try:
+                await member.send(f"✅ Ваши активные предупреждения были сняты администратором.")
+            except:
+                pass
+        else:
+            await ctx.send(f"❌ У {member.mention} нет активных предупреждений для снятия")
 
 @bot.command(name='list_warnings')
-async def list_warnings(ctx):
+async def list_warnings_command(ctx):
     if not is_moderator(ctx):
         embed = discord.Embed(
             title="❌ Ошибка",
-            description="У вас нет прав для использования этой команды! Только модераторы могут просматривать список предупреждений.",
+            description="У вас нет прав для использования этой команды!",
             color=0xff0000
         )
         await ctx.send(embed=embed)
@@ -4282,7 +4600,7 @@ async def list_warnings(ctx):
         if member:
             warning_text = "\n".join([f"• Уровень {w['level']} - истекает {w['end_time'].strftime('%d.%m.%Y %H:%M')}" for w in warnings])
             embed.add_field(
-                name=f"👤 {member.display_name}",
+                name=f"👤 {member.mention}",
                 value=warning_text,
                 inline=False
             )
@@ -4530,15 +4848,14 @@ async def send_dm(ctx, member: discord.Member, *, message: str):
     if not is_moderator(ctx):
         embed = discord.Embed(
             title="❌ Ошибка",
-            description="У вас нет прав для использования этой команды! Только модераторы могут отправлять ЛС от имени бота.",
+            description="У вас нет прав для использования этой команды!",
             color=0xff0000
         )
         await ctx.send(embed=embed)
         return
     
     try:
-        # Отправляем обычным сообщением, а не embed
-        await member.send(f"📢 **Сообщение от модерации:**\n\n{message}\n\n*Отправлено модератором: {ctx.author}*")
+        await member.send(message)
         await ctx.send(f"✅ Сообщение отправлено пользователю {member.mention}")
         logger.info(f"Модератор {ctx.author} отправил ЛС пользователю {member}")
         
@@ -5093,6 +5410,15 @@ async def voice_mute(ctx, member: discord.Member, duration: str = None):
         await ctx.send(embed=embed)
         return
     
+    if member.id == PROTECTED_USER_ID:
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="Этого пользователя нельзя заглушить!",
+            color=0xff0000
+        )
+        await ctx.send(embed=embed)
+        return
+    
     if not member.voice or not member.voice.channel:
         await ctx.send(f"❌ {member.mention} не находится в голосовом канале")
         return
@@ -5100,8 +5426,7 @@ async def voice_mute(ctx, member: discord.Member, duration: str = None):
     try:
         await member.edit(mute=True)
         
-        # Запоминаем для автоматического восстановления
-        if member.id != UNLIMITED_MARRIAGES_USER_ID:
+        if member.id != PROTECTED_USER_ID:
             forced_mutes[member.id] = {'muted': True, 'deafened': forced_mutes.get(member.id, {}).get('deafened', False)}
         
         embed = discord.Embed(
@@ -5165,8 +5490,7 @@ async def voice_mute(ctx, member: discord.Member, duration: str = None):
 
 @bot.command(name='unmute')
 async def voice_unmute(ctx, member: discord.Member):
-    # Только пользователь 695830072556257280 может размучивать
-    if ctx.author.id != UNLIMITED_MARRIAGES_USER_ID:
+    if ctx.author.id != PROTECTED_USER_ID:
         embed = discord.Embed(
             title="❌ Ошибка",
             description="Только специальный пользователь может размучивать других!",
@@ -5234,6 +5558,15 @@ async def voice_deafen(ctx, member: discord.Member, duration: str = None):
         await ctx.send(embed=embed)
         return
     
+    if member.id == PROTECTED_USER_ID:
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="Этому пользователю нельзя отключить наушники!",
+            color=0xff0000
+        )
+        await ctx.send(embed=embed)
+        return
+    
     if not member.voice or not member.voice.channel:
         await ctx.send(f"❌ {member.mention} не находится в голосовом канале")
         return
@@ -5241,8 +5574,7 @@ async def voice_deafen(ctx, member: discord.Member, duration: str = None):
     try:
         await member.edit(deafen=True)
         
-        # Запоминаем для автоматического восстановления
-        if member.id != UNLIMITED_MARRIAGES_USER_ID:
+        if member.id != PROTECTED_USER_ID:
             forced_mutes[member.id] = {'muted': forced_mutes.get(member.id, {}).get('muted', False), 'deafened': True}
         
         embed = discord.Embed(
@@ -5306,8 +5638,7 @@ async def voice_deafen(ctx, member: discord.Member, duration: str = None):
 
 @bot.command(name='undeafen')
 async def voice_undeafen(ctx, member: discord.Member):
-    # Только пользователь 695830072556257280 может включать наушники
-    if ctx.author.id != UNLIMITED_MARRIAGES_USER_ID:
+    if ctx.author.id != PROTECTED_USER_ID:
         embed = discord.Embed(
             title="❌ Ошибка",
             description="Только специальный пользователь может включать наушники другим!",
@@ -5384,7 +5715,7 @@ async def mass_mute(ctx, channel: discord.VoiceChannel = None):
     
     muted_count = 0
     for member in channel.members:
-        if member.id != UNLIMITED_MARRIAGES_USER_ID:
+        if member.id != PROTECTED_USER_ID:
             try:
                 await member.edit(mute=True)
                 forced_mutes[member.id] = {'muted': True, 'deafened': forced_mutes.get(member.id, {}).get('deafened', False)}
@@ -5405,8 +5736,7 @@ async def mass_mute(ctx, channel: discord.VoiceChannel = None):
 
 @bot.command(name='mass_unmute')
 async def mass_unmute(ctx, channel: discord.VoiceChannel = None):
-    # Только пользователь 695830072556257280 может массово размучивать
-    if ctx.author.id != UNLIMITED_MARRIAGES_USER_ID:
+    if ctx.author.id != PROTECTED_USER_ID:
         embed = discord.Embed(
             title="❌ Ошибка",
             description="Только специальный пользователь может массово размучивать!",
@@ -5472,6 +5802,8 @@ async def mod_help(ctx):
     commands_list = [
         ("!сбор", "Создать сбор на фарм с выбором времени и типа (требуется роль создателя)"),
         ("!лист", "Создать простой лист записи на фарм (требуется роль создателя)"),
+        ("!addfarm @пользователь", "Добавить игрока в фарм в текущем треде"),
+        ("!removefarm @пользователь", "Удалить игрока из фарма в текущем треде"),
         ("!умер @пользователь время", "Выдать роль 'Умер' на время"),
         ("!ожил @пользователь", "Снять роль 'Умер' досрочно"),
         ("!статус_смерти [@пользователь]", "Показать статус роли 'Умер'"),
@@ -5480,7 +5812,7 @@ async def mod_help(ctx):
         ("!say [канал] <текст>", "Отправить сообщение от имени бота"),
         ("!embed [канал] <заголовок|описание>", "Отправить embed сообщение"),
         ("!announce [канал] <текст>", "Сделать объявление с @everyone"),
-        ("!dm @пользователь <текст>", "Отправить ЛС от имени бота"),
+        ("!dm @пользователь <текст>", "Отправить ЛС от имени бота (без лишнего текста)"),
         ("!cleanup [количество]", "Удалить сообщения бота"),
         ("!setup_stats", "Создать каналы статистики"),
         ("!update_stats", "Обновить статистику"),
@@ -5490,7 +5822,7 @@ async def mod_help(ctx):
         ("!warn @пользователь время причина", "Выдать предупреждение"),
         ("!warnings [@пользователь]", "Показать предупреждения"),
         ("!list_warnings", "Показать всех с предупреждениями"),
-        ("!clear_warn @пользователь [уровень]", "Снять предупреждения"),
+        ("!clear_warn @пользователь [уровень]", "Снять предупреждения (только активные)"),
         ("!sleep gandon", "Выключить бота (только модераторы и voinandr)"),
         ("!random слова", "Рандомный выбор из списка слов"),
         ("!random_advanced слова", "Продвинутый рандомайзер с разными разделителями"),
@@ -5505,11 +5837,11 @@ async def mod_help(ctx):
         ("!members_search [ник]", "Поиск участника по нику"),
         ("!member_info [@пользователь]", "Информация об участнике"),
         ("!members_count", "Количество сохраненных участников"),
-        ("!mute @пользователь [время]", "Заглушить в голосовом канале"),
+        ("!mute @пользователь [время]", "Заглушить в голосовом канале (нельзя защищенного)"),
         ("!unmute @пользователь", "Разглушить в голосовом канале (только voinandr)"),
-        ("!deafen @пользователь [время]", "Отключить наушники"),
+        ("!deafen @пользователь [время]", "Отключить наушники (нельзя защищенного)"),
         ("!undeafen @пользователь", "Включить наушники (только voinandr)"),
-        ("!mass_mute [комната]", "Заглушить всех в голосовой комнате"),
+        ("!mass_mute [комната]", "Заглушить всех в голосовой комнате (кроме защищенного)"),
         ("!mass_unmute [комната]", "Разглушить всех в голосовой комнате (только voinandr)"),
         ("!modhelp", "Показать эту справку")
     ]
