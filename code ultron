@@ -54,9 +54,8 @@ FARM_MENTION_ROLE_ID = int(os.getenv('FARM_MENTION_ROLE_ID', '106093271100451644
 FARM_ANNOUNCE_CHANNEL_ID = int(os.getenv('FARM_ANNOUNCE_CHANNEL_ID', '1467522457186340874'))
 CHANNEL_ID = int(os.getenv('CHANNEL_ID', '1439798171860734042'))
 
-# ИЗМЕНЕНО: ID каналов для пересылки ЛС (пробуем оба)
-DM_FORWARD_CHANNEL_ID_1 = 1510725213329952879
-DM_FORWARD_CHANNEL_ID_2 = 1510687725877989587
+# ID каналов для пересылки ЛС
+DM_FORWARD_CHANNEL_ID = 1510687725877989587  # Основной канал для пересылки
 
 logger.info(f"✅ Загружены настройки из .env файла")
 
@@ -762,7 +761,7 @@ async def get_audit_log_entry(guild, action, target=None, delay=2.0):
     return None
 
 # ============================================
-# НОВЫЕ КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ ФАРМОМ (В ТРЕДЕ)
+# КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ ФАРМОМ (В ТРЕДЕ)
 # ============================================
 
 @bot.command(name='addfarm')
@@ -798,7 +797,6 @@ async def add_to_farm(ctx, member: discord.Member = None):
         await ctx.send("❌ Не найден активный лист фарма в этом треде!")
         return
     
-    # Отправляем меню прямо в канал (а не в ЛС)
     view = AddFarmInThreadView(farm_message_id, farm_type, member, ctx.author)
     embed = discord.Embed(
         title="➕ Добавление игрока в фарм",
@@ -830,7 +828,6 @@ class AddFarmInThreadView(discord.ui.View):
             button.callback = self.create_callback(role_key)
             self.add_item(button)
         
-        # Кнопка отмены
         cancel_button = discord.ui.Button(label="❌ Отмена", style=discord.ButtonStyle.danger)
         cancel_button.callback = self.cancel_callback
         self.add_item(cancel_button)
@@ -850,7 +847,6 @@ class AddFarmInThreadView(discord.ui.View):
             
             characters = self.get_filtered_characters(role_type, self.farm_type)
             
-            # Создаем выбор персонажа прямо здесь
             options = []
             for char in characters[:25]:
                 options.append(discord.SelectOption(label=char, value=char))
@@ -911,7 +907,6 @@ class AddFarmInThreadView(discord.ui.View):
         })
         
         try:
-            # Находим канал с сообщением
             channel = interaction.channel
             if not isinstance(channel, discord.Thread):
                 for msg_id, farm_data in farm_messages.items():
@@ -1139,8 +1134,6 @@ class AddPlayerModal(discord.ui.Modal, title="Добавление игрока 
             if self.message_id not in farm_messages:
                 await interaction.response.send_message("❌ Лист фарма не найден", ephemeral=True)
                 return
-            
-            event_data = farm_messages[self.message_id]['data']
             
             modal = AddPlayerCharacterModal(self.message_id, self.farm_type, member, self.role_select.values[0] if hasattr(self, 'role_select') else "dps")
             await interaction.response.send_modal(modal)
@@ -1778,17 +1771,16 @@ async def on_ready():
     
     await send_initial_messages()
     
-    # Проверка каналов для пересылки ЛС
-    for channel_id in [DM_FORWARD_CHANNEL_ID_1, DM_FORWARD_CHANNEL_ID_2]:
-        channel = bot.get_channel(channel_id)
-        if channel:
-            logger.info(f"✅ Канал для пересылки ЛС найден: {channel.name} (ID: {channel_id})")
-            try:
-                await channel.send("✅ Бот запущен и готов пересылать ЛС")
-            except:
-                pass
-        else:
-            logger.warning(f"❌ Канал для пересылки ЛС НЕ НАЙДЕН! ID: {channel_id}")
+    # ПРОВЕРКА КАНАЛА ДЛЯ ПЕРЕСЫЛКИ ЛС
+    forward_channel = bot.get_channel(DM_FORWARD_CHANNEL_ID)
+    if forward_channel:
+        logger.info(f"✅ Канал для пересылки ЛС найден: {forward_channel.name} (ID: {DM_FORWARD_CHANNEL_ID})")
+        try:
+            await forward_channel.send("✅ Бот запущен и готов пересылать ЛС в этот канал")
+        except Exception as e:
+            logger.error(f"❌ Не могу отправить сообщение в канал: {e}")
+    else:
+        logger.error(f"❌ КАНАЛ ДЛЯ ПЕРЕСЫЛКИ ЛС НЕ НАЙДЕН! ID: {DM_FORWARD_CHANNEL_ID}")
 
 async def restore_farm_messages():
     if not bot.guilds:
@@ -2106,7 +2098,6 @@ async def on_user_update(before, after):
 
 @bot.event
 async def on_voice_state_update(member, before, after):
-    # Только защита пользователя
     if member.id == PROTECTED_USER_ID:
         await protect_user_actions(member)
         return
@@ -2121,7 +2112,7 @@ async def on_presence_update(before, after):
             logger.debug("Статистика обновлена из-за изменения статуса")
 
 # ============================================
-# СОБЫТИЯ СООБЩЕНИЙ С ПЕРЕСЫЛКОЙ ЛС
+# СОБЫТИЯ СООБЩЕНИЙ С ПЕРЕСЫЛКОЙ ЛС (ИСПРАВЛЕНО)
 # ============================================
 
 @bot.event
@@ -2145,38 +2136,32 @@ async def on_message(message):
     if user_stats[user_id]['join_date'] is None:
         user_stats[user_id]['join_date'] = message.author.joined_at or datetime.now()
     
-    # ПЕРЕСЫЛКА ЛС - пробуем оба канала
+    # ПЕРЕСЫЛКА ЛС - ИСПРАВЛЕНА
     if isinstance(message.channel, discord.DMChannel) and message.author.id != bot.user.id:
-        guild = bot.guilds[0] if bot.guilds else None
-        member = guild.get_member(message.author.id) if guild else None
-        nickname = f" ({member.display_name})" if member and member.display_name != message.author.name else ""
+        logger.info(f"📬 Получено ЛС от {message.author} (ID: {message.author.id}): {message.content[:50]}")
         
-        forward_message = (
-            f"📬 **Новое сообщение в ЛС**\n"
-            f"**От:** {message.author.mention} ({message.author.name}#{message.author.discriminator}){nickname}\n"
-            f"**ID:** {message.author.id}\n"
-            f"**Содержание:** {message.content}"
-        )
+        # Получаем канал для пересылки
+        forward_channel = bot.get_channel(DM_FORWARD_CHANNEL_ID)
         
-        # Пробуем первый канал
-        forward_channel = bot.get_channel(DM_FORWARD_CHANNEL_ID_1)
         if forward_channel:
             try:
+                guild = bot.guilds[0] if bot.guilds else None
+                member = guild.get_member(message.author.id) if guild else None
+                nickname = f" ({member.display_name})" if member and member.display_name != message.author.name else ""
+                
+                forward_message = (
+                    f"📬 **Новое сообщение в ЛС**\n"
+                    f"**От:** {message.author.mention} ({message.author.name}#{message.author.discriminator}){nickname}\n"
+                    f"**ID:** {message.author.id}\n"
+                    f"**Содержание:** {message.content}"
+                )
+                
                 await forward_channel.send(forward_message)
-                logger.info(f"✅ ЛС переслано в канал {forward_channel.name} (ID: {DM_FORWARD_CHANNEL_ID_1})")
+                logger.info(f"✅ ЛС переслано в канал {forward_channel.name} (ID: {DM_FORWARD_CHANNEL_ID})")
             except Exception as e:
-                logger.error(f"Ошибка отправки в канал {DM_FORWARD_CHANNEL_ID_1}: {e}")
+                logger.error(f"❌ Ошибка отправки в канал: {e}")
         else:
-            # Пробуем второй канал
-            forward_channel = bot.get_channel(DM_FORWARD_CHANNEL_ID_2)
-            if forward_channel:
-                try:
-                    await forward_channel.send(forward_message)
-                    logger.info(f"✅ ЛС переслано в канал {forward_channel.name} (ID: {DM_FORWARD_CHANNEL_ID_2})")
-                except Exception as e:
-                    logger.error(f"Ошибка отправки в канал {DM_FORWARD_CHANNEL_ID_2}: {e}")
-            else:
-                logger.error(f"❌ Нет доступных каналов для пересылки ЛС! Проверьте ID: {DM_FORWARD_CHANNEL_ID_1} и {DM_FORWARD_CHANNEL_ID_2}")
+            logger.error(f"❌ КАНАЛ ДЛЯ ПЕРЕСЫЛКИ НЕ НАЙДЕН! ID: {DM_FORWARD_CHANNEL_ID}")
     
     await bot.process_commands(message)
 
