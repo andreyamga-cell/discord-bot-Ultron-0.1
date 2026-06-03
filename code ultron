@@ -57,12 +57,20 @@ CHANNEL_ID = int(os.getenv('CHANNEL_ID', '1439798171860734042'))
 # ID каналов для пересылки ЛС
 DM_FORWARD_CHANNEL_ID = 1510687725877989587  # Основной канал для пересылки
 
+# ID для системы верификации
+VERIFY_ROLE_ID = 1511817283717169284  # Роль "не верифицирован" (выдается при входе)
+VERIFY_CHANNEL_ID = 1511830873258066071  # Канал, который видит неверифицированный пользователь
+VERIFY_CATEGORY_ID = 1511830555694465164  # Категория для создания тикетов
+VERIFY_ARCHIVE_CATEGORY_ID = 1511831073191891055  # Категория для архивации тикетов
+VERIFIED_ROLE_ID = 1060932711004516445  # Роль "участник" после верификации
+
 logger.info(f"✅ Загружены настройки из .env файла")
 
 # Файлы для сохранения данных
 MARRIAGES_FILE = "marriages.json"
 FARM_DATA_FILE = "farm_data.pkl"
 MEMBERS_FILE = "members.json"
+TICKET_COUNTER_FILE = "ticket_counter.json"
 
 farm_messages = {}
 farm_events = {}
@@ -71,6 +79,8 @@ repeating_messages = {}
 marriages = {}
 user_actions_log = defaultdict(lambda: {'actions': [], 'last_updated': None})
 old_members = {}
+ticket_counter = 1
+active_tickets = {}  # {ticket_channel_id: {'user_id': user_id, 'ign': None, 'answers': []}}
 
 # Отключенные логи для каналов
 DISABLED_LOG_CHANNELS = [1439503734202826824]
@@ -254,6 +264,32 @@ ERROR_IMAGE_URL = "https://media.discordapp.net/attachments/1439459952505651210/
 
 forced_mutes = {}
 
+# ============================================
+# ФУНКЦИИ ДЛЯ РАБОТЫ С ТИКЕТАМИ
+# ============================================
+
+def save_ticket_counter():
+    try:
+        with open(TICKET_COUNTER_FILE, 'w') as f:
+            json.dump({'counter': ticket_counter}, f)
+    except Exception as e:
+        logger.error(f"Ошибка сохранения счетчика тикетов: {e}")
+
+def load_ticket_counter():
+    global ticket_counter
+    try:
+        if os.path.exists(TICKET_COUNTER_FILE):
+            with open(TICKET_COUNTER_FILE, 'r') as f:
+                data = json.load(f)
+                ticket_counter = data.get('counter', 1)
+    except Exception as e:
+        logger.error(f"Ошибка загрузки счетчика тикетов: {e}")
+        ticket_counter = 1
+
+# ============================================
+# ФУНКЦИИ СОХРАНЕНИЯ/ЗАГРУЗКИ ДАННЫХ
+# ============================================
+
 def save_marriages():
     try:
         with open(MARRIAGES_FILE, 'w', encoding='utf-8') as f:
@@ -337,6 +373,10 @@ def load_members():
         logger.error(f"Ошибка загрузки участников: {e}")
         old_members = {}
 
+# ============================================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# ============================================
+
 def get_unix_timestamp(time_str):
     msk_tz = pytz.timezone('Europe/Moscow')
     now = datetime.now(msk_tz)
@@ -387,16 +427,33 @@ def add_user_action(user_id, action_type, details, target=None, channel=None):
     
     user_actions_log[user_id]['last_updated'] = datetime.now()
 
-def is_moderator(ctx):
-    if ctx.author.id in MODERATOR_USER_IDS:
+def is_moderator(ctx_or_user):
+    if hasattr(ctx_or_user, 'author'):
+        user = ctx_or_user.author
+        ctx = ctx_or_user
+    else:
+        user = ctx_or_user
+        ctx = None
+    
+    if user.id in MODERATOR_USER_IDS:
         return True
     
-    if hasattr(ctx.author, 'roles'):
-        for role in ctx.author.roles:
-            if role.id in MODERATOR_ROLE_IDS:
-                return True
+    if ctx and hasattr(ctx, 'guild') and ctx.guild:
+        member = ctx.guild.get_member(user.id)
+        if member:
+            for role in member.roles:
+                if role.id in MODERATOR_ROLE_IDS:
+                    return True
     
-    return ctx.author.guild_permissions.administrator
+    if hasattr(user, 'guild_permissions') and user.guild_permissions.administrator:
+        return True
+    
+    if ctx and ctx.guild:
+        member = ctx.guild.get_member(user.id)
+        if member and member.guild_permissions.administrator:
+            return True
+    
+    return False
 
 def is_farm_creator(ctx):
     if is_moderator(ctx):
@@ -430,116 +487,6 @@ def create_time_embed(region, timezone):
     embed.add_field(name="Часовой пояс", value=f"`{timezone}`", inline=True)
     
     return embed
-
-def create_farm_embed(event_data, farm_type):
-    farm_config = FARM_TYPES[farm_type]
-    
-    embed = discord.Embed(
-        title=f"📋 Лист фарм лорд - {farm_config['name']}",
-        description=f"**Композиция:** {farm_config['composition']}\n\nНажмите на кнопку ниже чтобы записаться",
-        color=0x00ff00
-    )
-    
-    if 'team1_' in list(farm_config['roles'].keys())[0]:
-        team1_roles = {k: v for k, v in farm_config['roles'].items() if v.get('team') == 1}
-        team2_roles = {k: v for k, v in farm_config['roles'].items() if v.get('team') == 2}
-        
-        embed.add_field(
-            name="🎯 **КОМАНДА 1**",
-            value="───────────────",
-            inline=False
-        )
-        
-        for role_key, role_config in team1_roles.items():
-            role_data = event_data[role_key]
-            count = len(role_data)
-            limit = role_config['limit']
-            emoji = role_config['emoji']
-            display_name = role_config['display_name']
-            
-            role_list = "\n".join([f"{i+1}) {entry['character']} ({entry['user'].mention})" 
-                                  for i, entry in enumerate(role_data)]) or "➖ Пусто"
-            
-            embed.add_field(name=f"{emoji} {display_name} ({count}/{limit})", value=role_list, inline=True)
-        
-        embed.add_field(
-            name="🎯 **КОМАНДА 2**",
-            value="───────────────",
-            inline=False
-        )
-        
-        for role_key, role_config in team2_roles.items():
-            role_data = event_data[role_key]
-            count = len(role_data)
-            limit = role_config['limit']
-            emoji = role_config['emoji']
-            display_name = role_config['display_name']
-            
-            role_list = "\n".join([f"{i+1}) {entry['character']} ({entry['user'].mention})" 
-                                  for i, entry in enumerate(role_data)]) or "➖ Пусто"
-            
-            embed.add_field(name=f"{emoji} {display_name} ({count}/{limit})", value=role_list, inline=True)
-            
-    else:
-        for role_key, role_config in farm_config['roles'].items():
-            role_data = event_data[role_key]
-            count = len(role_data)
-            limit = role_config['limit']
-            emoji = role_config['emoji']
-            display_name = role_config['display_name']
-            
-            role_list = "\n".join([f"{i+1}) {entry['character']} ({entry['user'].mention})" 
-                                  for i, entry in enumerate(role_data)]) or "➖ Пусто"
-            
-            embed.add_field(name=f"{emoji} {display_name} ({count}/{limit})", value=role_list, inline=False)
-    
-    embed.set_footer(text="Используйте кнопки ниже для записи или выхода")
-    
-    return embed
-
-async def update_farm_message(message, event_data, farm_type):
-    embed = create_farm_embed(event_data, farm_type)
-    await message.edit(embed=embed)
-
-async def remove_user_from_farm(event_data, user_id):
-    removed = False
-    for role_type in list(event_data.keys()):
-        for i, entry in enumerate(event_data[role_type][:]):
-            if entry['user'].id == user_id:
-                event_data[role_type].pop(i)
-                removed = True
-                break
-    return removed
-
-async def remove_specific_user_from_farm(event_data, user):
-    removed = False
-    removed_from = []
-    
-    for role_type, role_list in event_data.items():
-        for i, entry in enumerate(role_list[:]):
-            if entry['user'].id == user.id:
-                character_name = entry['character']
-                role_list.pop(i)
-                removed = True
-                
-                if 'tank' in role_type:
-                    role_name = 'танк'
-                elif 'support' in role_type:
-                    role_name = 'саппорт'
-                elif 'dps' in role_type:
-                    role_name = 'дпс'
-                else:
-                    role_name = role_type
-                
-                if 'team1' in role_type:
-                    role_name += ' команды 1'
-                elif 'team2' in role_type: 
-                    role_name += ' команды 2'
-                
-                removed_from.append(f"{role_name} ({character_name})")
-                break
-    
-    return removed, removed_from
 
 async def remove_warning_after_delay(member, role, delay_seconds, user_id, warning_level, warning_id):
     try:
@@ -761,7 +708,121 @@ async def get_audit_log_entry(guild, action, target=None, delay=2.0):
     return None
 
 # ============================================
-# КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ ФАРМОМ (В ТРЕДЕ)
+# ФУНКЦИИ ДЛЯ ФАРМА (ТЕ ЖЕ САМЫЕ)
+# ============================================
+
+def create_farm_embed(event_data, farm_type):
+    farm_config = FARM_TYPES[farm_type]
+    
+    embed = discord.Embed(
+        title=f"📋 Лист фарм лорд - {farm_config['name']}",
+        description=f"**Композиция:** {farm_config['composition']}\n\nНажмите на кнопку ниже чтобы записаться",
+        color=0x00ff00
+    )
+    
+    if 'team1_' in list(farm_config['roles'].keys())[0]:
+        team1_roles = {k: v for k, v in farm_config['roles'].items() if v.get('team') == 1}
+        team2_roles = {k: v for k, v in farm_config['roles'].items() if v.get('team') == 2}
+        
+        embed.add_field(
+            name="🎯 **КОМАНДА 1**",
+            value="───────────────",
+            inline=False
+        )
+        
+        for role_key, role_config in team1_roles.items():
+            role_data = event_data[role_key]
+            count = len(role_data)
+            limit = role_config['limit']
+            emoji = role_config['emoji']
+            display_name = role_config['display_name']
+            
+            role_list = "\n".join([f"{i+1}) {entry['character']} ({entry['user'].mention})" 
+                                  for i, entry in enumerate(role_data)]) or "➖ Пусто"
+            
+            embed.add_field(name=f"{emoji} {display_name} ({count}/{limit})", value=role_list, inline=True)
+        
+        embed.add_field(
+            name="🎯 **КОМАНДА 2**",
+            value="───────────────",
+            inline=False
+        )
+        
+        for role_key, role_config in team2_roles.items():
+            role_data = event_data[role_key]
+            count = len(role_data)
+            limit = role_config['limit']
+            emoji = role_config['emoji']
+            display_name = role_config['display_name']
+            
+            role_list = "\n".join([f"{i+1}) {entry['character']} ({entry['user'].mention})" 
+                                  for i, entry in enumerate(role_data)]) or "➖ Пусто"
+            
+            embed.add_field(name=f"{emoji} {display_name} ({count}/{limit})", value=role_list, inline=True)
+            
+    else:
+        for role_key, role_config in farm_config['roles'].items():
+            role_data = event_data[role_key]
+            count = len(role_data)
+            limit = role_config['limit']
+            emoji = role_config['emoji']
+            display_name = role_config['display_name']
+            
+            role_list = "\n".join([f"{i+1}) {entry['character']} ({entry['user'].mention})" 
+                                  for i, entry in enumerate(role_data)]) or "➖ Пусто"
+            
+            embed.add_field(name=f"{emoji} {display_name} ({count}/{limit})", value=role_list, inline=False)
+    
+    embed.set_footer(text="Используйте кнопки ниже для записи или выхода")
+    
+    return embed
+
+async def update_farm_message(message, event_data, farm_type):
+    embed = create_farm_embed(event_data, farm_type)
+    await message.edit(embed=embed)
+
+async def remove_user_from_farm(event_data, user_id):
+    removed = False
+    for role_type in list(event_data.keys()):
+        for i, entry in enumerate(event_data[role_type][:]):
+            if entry['user'].id == user_id:
+                event_data[role_type].pop(i)
+                removed = True
+                break
+    return removed
+
+async def remove_specific_user_from_farm(event_data, user):
+    removed = False
+    removed_from = []
+    
+    for role_type, role_list in event_data.items():
+        for i, entry in enumerate(role_list[:]):
+            if entry['user'].id == user.id:
+                character_name = entry['character']
+                role_list.pop(i)
+                removed = True
+                
+                if 'tank' in role_type:
+                    role_name = 'танк'
+                elif 'support' in role_type:
+                    role_name = 'саппорт'
+                elif 'dps' in role_type:
+                    role_name = 'дпс'
+                else:
+                    role_name = role_type
+                
+                if 'team1' in role_type:
+                    role_name += ' команды 1'
+                elif 'team2' in role_type: 
+                    role_name += ' команды 2'
+                
+                removed_from.append(f"{role_name} ({character_name})")
+                break
+    
+    return removed, removed_from
+
+# ============================================
+# КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ ФАРМОМ
 # ============================================
 
 @bot.command(name='addfarm')
@@ -1020,7 +1081,7 @@ async def remove_from_farm_command(ctx, member: discord.Member = None):
         await ctx.send(f"❌ {member.mention} не найден в списке записи")
 
 # ============================================
-# VIEW КЛАССЫ ДЛЯ ФАРМА
+# ВСЕ ОСТАЛЬНЫЕ КЛАССЫ VIEW ДЛЯ ФАРМА
 # ============================================
 
 class FarmUserManagementView(discord.ui.View):
@@ -1731,6 +1792,110 @@ async def create_farm_list_from_button(interaction: discord.Interaction, farm_ty
     await interaction.response.send_message(f"✅ Создан лист для {farm_config['name']}!", ephemeral=True, delete_after=5)
 
 # ============================================
+# КОМАНДА ВЕРИФИКАЦИИ
+# ============================================
+
+@bot.command(name='верификация')
+async def verify_command(ctx):
+    """Команда для модераторов - верифицировать пользователя в тикете"""
+    if not is_moderator(ctx):
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="У вас нет прав для использования этой команды!",
+            color=0xff0000
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    if ctx.channel.id not in active_tickets:
+        await ctx.send("❌ Эта команда работает только в тикетах верификации!")
+        return
+    
+    ticket_data = active_tickets[ctx.channel.id]
+    user = ctx.guild.get_member(ticket_data['user_id'])
+    
+    if not user:
+        await ctx.send("❌ Пользователь не найден на сервере!")
+        return
+    
+    view = VerifyConfirmView(ctx.channel.id, user.id)
+    embed = discord.Embed(
+        title="✅ Верификация пользователя",
+        description=f"Вы уверены, что хотите верифицировать {user.mention}?",
+        color=0xff9900
+    )
+    embed.add_field(name="IGN", value=ticket_data.get('ign', 'Не указан'), inline=True)
+    
+    await ctx.send(embed=embed, view=view)
+
+class VerifyConfirmView(discord.ui.View):
+    def __init__(self, channel_id, user_id):
+        super().__init__(timeout=60)
+        self.channel_id = channel_id
+        self.user_id = user_id
+    
+    @discord.ui.button(label="✅ Да", style=discord.ButtonStyle.success)
+    async def confirm_yes(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not is_moderator(interaction):
+            await interaction.response.send_message("❌ У вас нет прав!", ephemeral=True)
+            return
+        
+        channel = interaction.guild.get_channel(self.channel_id)
+        user = interaction.guild.get_member(self.user_id)
+        
+        if not user:
+            await interaction.response.send_message("❌ Пользователь не найден!", ephemeral=True)
+            return
+        
+        verify_role = interaction.guild.get_role(VERIFY_ROLE_ID)
+        verified_role = interaction.guild.get_role(VERIFIED_ROLE_ID)
+        
+        # Добавляем роль участника и снимаем роль неверифицированного
+        if verified_role:
+            await user.add_roles(verified_role)
+        if verify_role and verify_role in user.roles:
+            await user.remove_roles(verify_role)
+        
+        # Убираем доступ к тикет-каналу для пользователя
+        await channel.set_permissions(user, view_channel=False)
+        
+        # Архивация тикета
+        archive_category = interaction.guild.get_channel(VERIFY_ARCHIVE_CATEGORY_ID)
+        if archive_category:
+            await channel.edit(category=archive_category)
+        
+        # Переименовываем канал в IGN
+        ticket_data = active_tickets.get(self.channel_id, {})
+        ign = ticket_data.get('ign', 'unknown')
+        new_name = f"✅-{ign.lower().replace(' ', '-')[:50]}"
+        await channel.edit(name=new_name)
+        
+        # Отправляем сообщение в канал
+        embed = discord.Embed(
+            title="✅ Пользователь верифицирован!",
+            description=f"{user.mention} успешно прошел верификацию!",
+            color=0x00ff00
+        )
+        embed.add_field(name="IGN", value=ign, inline=True)
+        embed.add_field(name="Верифицировал", value=interaction.user.mention, inline=True)
+        await channel.send(embed=embed)
+        
+        # Удаляем из активных тикетов
+        if self.channel_id in active_tickets:
+            del active_tickets[self.channel_id]
+        
+        await interaction.response.send_message("✅ Пользователь верифицирован!", ephemeral=True)
+        logger.info(f"Пользователь {user} верифицирован модератором {interaction.user}")
+    
+    @discord.ui.button(label="❌ Нет", style=discord.ButtonStyle.danger)
+    async def confirm_no(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not is_moderator(interaction):
+            await interaction.response.send_message("❌ У вас нет прав!", ephemeral=True)
+            return
+        
+        await interaction.response.send_message("❌ Верификация отменена. Продолжайте общение в тикете.", ephemeral=True)
+
+# ============================================
 # ОСНОВНЫЕ СОБЫТИЯ БОТА
 # ============================================
 
@@ -1742,6 +1907,7 @@ async def on_ready():
     load_marriages()
     load_farm_data()
     load_members()
+    load_ticket_counter()
     
     for guild in bot.guilds:
         for member in guild.members:
@@ -1771,6 +1937,9 @@ async def on_ready():
     
     await send_initial_messages()
     
+    # Отправка приветственного сообщения в канал верификации
+    await send_verification_message()
+    
     # ПРОВЕРКА КАНАЛА ДЛЯ ПЕРЕСЫЛКИ ЛС
     forward_channel = bot.get_channel(DM_FORWARD_CHANNEL_ID)
     if forward_channel:
@@ -1782,35 +1951,199 @@ async def on_ready():
     else:
         logger.error(f"❌ КАНАЛ ДЛЯ ПЕРЕСЫЛКИ ЛС НЕ НАЙДЕН! ID: {DM_FORWARD_CHANNEL_ID}")
 
-async def restore_farm_messages():
-    if not bot.guilds:
+async def send_verification_message():
+    """Отправляет сообщение с кнопкой для верификации в канал VERIFY_CHANNEL_ID"""
+    channel = bot.get_channel(VERIFY_CHANNEL_ID)
+    if not channel:
+        logger.error(f"❌ Канал для верификации не найден! ID: {VERIFY_CHANNEL_ID}")
         return
     
-    guild = bot.guilds[0]
-    restored_count = 0
+    # Очищаем старые сообщения бота
+    async for message in channel.history(limit=50):
+        if message.author == bot.user:
+            await message.delete()
     
-    for message_id, farm_data in list(farm_messages.items()):
+    embed = discord.Embed(
+        title="🔐 Верификация",
+        description="**Чтобы получить доступ к серверу, необходимо пройти верификацию.**\n\n"
+                   "Нажмите на кнопку ниже, чтобы создать тикет и начать процесс верификации.",
+        color=0x7289da
+    )
+    embed.add_field(
+        name="📝 Что нужно сделать?",
+        value="1. Нажмите кнопку **«Создать тикет»**\n"
+              "2. Укажите ваш IGN (никнейм) в игре Marvel Rivals\n"
+              "3. Ответьте на вопросы модератора\n"
+              "4. После проверки вы получите доступ к серверу",
+        inline=False
+    )
+    embed.set_footer(text="Ваши данные будут видны только модераторам")
+    
+    view = VerificationStartView()
+    await channel.send(embed=embed, view=view)
+
+class VerificationStartView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+    
+    @discord.ui.button(label="🎫 Создать тикет на верификацию", style=discord.ButtonStyle.primary, emoji="🎫")
+    async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Проверяем, есть ли у пользователя уже открытый тикет
+        for channel_id, ticket_data in active_tickets.items():
+            if ticket_data['user_id'] == interaction.user.id:
+                channel = interaction.guild.get_channel(channel_id)
+                if channel:
+                    await interaction.response.send_message(
+                        f"❌ У вас уже есть открытый тикет: {channel.mention}\nЗакройте его, чтобы создать новый.",
+                        ephemeral=True
+                    )
+                    return
+        
+        # Проверяем, не верифицирован ли уже пользователь
+        verify_role = interaction.guild.get_role(VERIFY_ROLE_ID)
+        verified_role = interaction.guild.get_role(VERIFIED_ROLE_ID)
+        
+        if verified_role and verified_role in interaction.user.roles:
+            await interaction.response.send_message(
+                "✅ Вы уже верифицированы и имеете доступ к серверу!",
+                ephemeral=True
+            )
+            return
+        
+        # Создаем тикет
+        global ticket_counter
+        ticket_name = f"тикет-{ticket_counter}"
+        
+        category = interaction.guild.get_channel(VERIFY_CATEGORY_ID)
+        
+        overwrites = {
+            interaction.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+            interaction.guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+        }
+        
+        # Добавляем права для модераторов
+        for mod_role_id in MODERATOR_ROLE_IDS:
+            mod_role = interaction.guild.get_role(mod_role_id)
+            if mod_role:
+                overwrites[mod_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+        
+        for mod_user_id in MODERATOR_USER_IDS:
+            mod_user = interaction.guild.get_member(mod_user_id)
+            if mod_user:
+                overwrites[mod_user] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+        
+        ticket_channel = await interaction.guild.create_text_channel(
+            name=ticket_name,
+            category=category,
+            overwrites=overwrites
+        )
+        
+        active_tickets[ticket_channel.id] = {
+            'user_id': interaction.user.id,
+            'ign': None,
+            'step': 'ign'  # шаг: ign, answers
+        }
+        
+        ticket_counter += 1
+        save_ticket_counter()
+        
+        # Отправляем приветственное сообщение в тикет
+        embed = discord.Embed(
+            title="🎫 Тикет верификации",
+            description=f"Добро пожаловать, {interaction.user.mention}!",
+            color=0x00ff00
+        )
+        embed.add_field(
+            name="📝 Шаг 1",
+            value="Пожалуйста, укажите ваш никнейм (IGN) в игре **Marvel Rivals**.\n\n"
+                  "Используйте меню ниже, чтобы ввести ваш никнейм.",
+            inline=False
+        )
+        embed.set_footer(text="Ваш ответ увидят только модераторы")
+        
+        # Создаем модальное окно для ввода IGN
+        view = IGNInputView(ticket_channel.id)
+        await ticket_channel.send(embed=embed, view=view)
+        
+        # Уведомляем модераторов
+        mod_mention = ""
+        for mod_role_id in MODERATOR_ROLE_IDS:
+            mod_role = interaction.guild.get_role(mod_role_id)
+            if mod_role:
+                mod_mention += mod_role.mention + " "
+        
+        await ticket_channel.send(f"{mod_mention} Создан новый тикет для верификации {interaction.user.mention}")
+        
+        await interaction.response.send_message(
+            f"✅ Тикет для верификации создан: {ticket_channel.mention}",
+            ephemeral=True
+        )
+        
+        logger.info(f"Создан тикет {ticket_channel.name} для пользователя {interaction.user}")
+
+class IGNInputView(discord.ui.View):
+    def __init__(self, ticket_channel_id):
+        super().__init__(timeout=300)
+        self.ticket_channel_id = ticket_channel_id
+    
+    @discord.ui.button(label="✏️ Ввести IGN", style=discord.ButtonStyle.primary, emoji="✏️")
+    async def input_ign(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = IGNModal(self.ticket_channel_id)
+        await interaction.response.send_modal(modal)
+
+class IGNModal(discord.ui.Modal, title="Ввод IGN"):
+    ign = discord.ui.TextInput(
+        label="Ваш никнейм в Marvel Rivals",
+        placeholder="Введите ваш IGN...",
+        required=True,
+        max_length=50
+    )
+    
+    def __init__(self, ticket_channel_id):
+        super().__init__()
+        self.ticket_channel_id = ticket_channel_id
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        channel = interaction.guild.get_channel(self.ticket_channel_id)
+        if not channel:
+            await interaction.response.send_message("❌ Канал не найден!", ephemeral=True)
+            return
+        
+        # Обновляем данные тикета
+        if self.ticket_channel_id in active_tickets:
+            active_tickets[self.ticket_channel_id]['ign'] = self.ign.value
+            active_tickets[self.ticket_channel_id]['step'] = 'answers'
+        
+        # Меняем ник пользователя на сервере
         try:
-            for channel in guild.channels:
-                try:
-                    message = await channel.fetch_message(message_id)
-                    farm_type = farm_data['type']
-                    
-                    if 'team1_' in list(FARM_TYPES[farm_type]['roles'].keys())[0]:
-                        view = TeamFarmRoleSelectionView(message_id, farm_type)
-                    else:
-                        view = RoleSelectionView(message_id, farm_type)
-                    
-                    await message.edit(view=view)
-                    restored_count += 1
-                    logger.info(f"Восстановлено сообщение фарма {message_id}")
-                    break
-                except:
-                    continue
+            await interaction.user.edit(nick=self.ign.value)
+            logger.info(f"Ник пользователя {interaction.user} изменен на {self.ign.value}")
         except Exception as e:
-            logger.error(f"Ошибка восстановления сообщения {message_id}: {e}")
-    
-    logger.info(f"Восстановлено {restored_count} сообщений фарма")
+            logger.error(f"Не удалось изменить ник: {e}")
+        
+        # Отправляем следующий вопрос
+        embed = discord.Embed(
+            title="📝 Шаг 2",
+            description=f"Здравствуйте, **{self.ign.value}**!",
+            color=0x7289da
+        )
+        embed.add_field(
+            name="❓ Вопросы от модераторов",
+            value="Пожалуйста, расскажите немного о себе:\n\n"
+                  "1. **Как вы узнали о нашем сервере?**\n"
+                  "2. **Какой у вас опыт игры в Marvel Rivals?**\n"
+                  "3. **Чем вы занимаетесь в свободное время?**\n\n"
+                  "Напишите ответы на эти вопросы в этом канале.\n"
+                  "Модераторы свяжутся с вами в ближайшее время.",
+            inline=False
+        )
+        
+        await channel.send(embed=embed)
+        await interaction.response.send_message("✅ IGN сохранен! Ответьте на вопросы в канале.", ephemeral=True)
+        
+        # Удаляем кнопку
+        await channel.edit(view=None)
 
 async def restore_active_warnings():
     if not bot.guilds:
@@ -1843,6 +2176,36 @@ async def restore_active_warnings():
                     )
                 
                 logger.info(f"Восстановлено предупреждение уровня {level} для {member}")
+
+async def restore_farm_messages():
+    if not bot.guilds:
+        return
+    
+    guild = bot.guilds[0]
+    restored_count = 0
+    
+    for message_id, farm_data in list(farm_messages.items()):
+        try:
+            for channel in guild.channels:
+                try:
+                    message = await channel.fetch_message(message_id)
+                    farm_type = farm_data['type']
+                    
+                    if 'team1_' in list(FARM_TYPES[farm_type]['roles'].keys())[0]:
+                        view = TeamFarmRoleSelectionView(message_id, farm_type)
+                    else:
+                        view = RoleSelectionView(message_id, farm_type)
+                    
+                    await message.edit(view=view)
+                    restored_count += 1
+                    logger.info(f"Восстановлено сообщение фарма {message_id}")
+                    break
+                except:
+                    continue
+        except Exception as e:
+            logger.error(f"Ошибка восстановления сообщения {message_id}: {e}")
+    
+    logger.info(f"Восстановлено {restored_count} сообщений фарма")
 
 async def send_initial_messages():
     channel = bot.get_channel(CHANNEL_ID)
@@ -1909,6 +2272,15 @@ async def on_member_join(member):
         'avatar_url': str(member.avatar.url) if member.avatar else None
     }
     save_members()
+    
+    # Выдаем роль "не верифицирован"
+    verify_role = member.guild.get_role(VERIFY_ROLE_ID)
+    if verify_role:
+        try:
+            await member.add_roles(verify_role)
+            logger.info(f"Выдана роль неверифицированного пользователю {member}")
+        except Exception as e:
+            logger.error(f"Ошибка выдачи роли неверифицированного: {e}")
     
     if should_log_user(member):
         add_user_action(
@@ -2156,6 +2528,7 @@ async def on_message(message):
                     f"**Содержание:** {message.content}"
                 )
                 
+                # Отправляем в указанный канал
                 await forward_channel.send(forward_message)
                 logger.info(f"✅ ЛС переслано в канал {forward_channel.name} (ID: {DM_FORWARD_CHANNEL_ID})")
             except Exception as e:
@@ -2419,7 +2792,7 @@ async def on_guild_role_update(before, after):
         await send_log(after.guild, log_message)
 
 # ============================================
-# ОСНОВНЫЕ КОМАНДЫ
+# ОСНОВНЫЕ КОМАНДЫ (СОХРАНЕНЫ ВСЕ)
 # ============================================
 
 @bot.command(name='clear', aliases=['очистить', 'чистка'])
@@ -2910,7 +3283,7 @@ async def help_command(ctx, category: str = None):
     await ctx.send(embed=embed)
 
 # ============================================
-# БРАЧНАЯ СИСТЕМА
+# БРАЧНАЯ СИСТЕМА (СОХРАНЕНА)
 # ============================================
 
 @bot.command(name='брак')
@@ -3295,7 +3668,7 @@ def format_timedelta(delta):
         return f"{minutes} м. {seconds} с."
 
 # ============================================
-# ОСТАЛЬНЫЕ КОМАНДЫ
+# ОСТАЛЬНЫЕ КОМАНДЫ (СОХРАНЕНЫ)
 # ============================================
 
 @bot.command(name='лог')
@@ -5654,6 +6027,7 @@ async def mod_help(ctx):
         ("!статус_смерти [@пользователь]", "Показать статус роли 'Умер'"),
         ("!брак", "Система брака - предложить/принять/развод/статус"),
         ("!брак список", "Список всех браков"),
+        ("!верификация", "Верифицировать пользователя в тикете"),
         ("!say [канал] <текст>", "Отправить сообщение от имени бота"),
         ("!embed [канал] <заголовок|описание>", "Отправить embed сообщение"),
         ("!announce [канал] <текст>", "Сделать объявление с @everyone"),
@@ -5750,3 +6124,8 @@ if __name__ == "__main__":
         bot.run(BOT_TOKEN)
     except Exception as e:
         logger.error(f"❌ Ошибка запуска бота: {e}")
+        VERIFY_ROLE_ID = 1511817283717169284  # Роль "не верифицирован"
+VERIFY_CHANNEL_ID = 1511830873258066071  # Канал для сообщения верификации
+VERIFY_CATEGORY_ID = 1511830555694465164  # Категория для создания тикетов
+VERIFY_ARCHIVE_CATEGORY_ID = 1511831073191891055  # Категория для архивации тикетов
+VERIFIED_ROLE_ID = 1060932711004516445  # Роль "участник"
