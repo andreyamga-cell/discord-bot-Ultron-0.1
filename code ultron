@@ -32,10 +32,9 @@ intents.moderation = True
 bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
 # ============================================
-# ID КАНАЛОВ И РОЛЕЙ (ВСЕ ПРЯМО В КОДЕ)
+# ID КАНАЛОВ И РОЛЕЙ
 # ============================================
 
-# Основные ID
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 if not BOT_TOKEN:
     logger.error("❌ ТОКЕН НЕ НАЙДЕН! Создайте файл .env и добавьте строку: BOT_TOKEN=ваш_токен")
@@ -55,18 +54,18 @@ FARM_MENTION_ROLE_ID = int(os.getenv('FARM_MENTION_ROLE_ID', '106093271100451644
 FARM_ANNOUNCE_CHANNEL_ID = int(os.getenv('FARM_ANNOUNCE_CHANNEL_ID', '1467522457186340874'))
 CHANNEL_ID = int(os.getenv('CHANNEL_ID', '1439798171860734042'))
 
-# ID каналов для пересылки ЛС
-DM_FORWARD_CHANNEL_ID = 1510725213329952879  # Новый канал для пересылки
+# ID каналов для пересылки ЛС (НОВЫЙ)
+DM_FORWARD_CHANNEL_ID = 1510687725877989587
 
 # ID для системы верификации
-VERIFY_ROLE_ID = 1511817283717169284          # Роль "не верифицирован" (выдается при входе)
-VERIFY_CHANNEL_ID = 1511830873258066071      # Канал, который видит неверифицированный пользователь
+VERIFY_ROLE_ID = 1511817283717169284          # Роль "не верифицирован"
+VERIFY_CHANNEL_ID = 1511830873258066071      # Канал для верификации
 VERIFY_CATEGORY_ID = 1511830555694465164     # Категория для создания тикетов
 VERIFY_ARCHIVE_CATEGORY_ID = 1511831073191891055  # Категория для архивации тикетов
 VERIFIED_ROLE_ID = 1060932711004516445       # Роль "участник" после верификации
 MODERATOR_VERIFY_ROLE_ID = 1060932711004516450  # Роль для верификации людей
 
-logger.info(f"✅ Загружены настройки из .env файла и ID каналов")
+logger.info(f"✅ Загружены настройки из .env файла")
 
 # Файлы для сохранения данных
 FARM_DATA_FILE = "farm_data.pkl"
@@ -90,9 +89,6 @@ user_stats = defaultdict(lambda: {
     'join_date': None,
     'last_activity': None
 })
-
-# Отключенные логи для каналов
-DISABLED_LOG_CHANNELS = [1439503734202826824]
 
 CHARACTERS = {
     'dps': [
@@ -291,7 +287,6 @@ def load_ticket_counter():
 # ============================================
 
 def save_warnings():
-    """Сохраняет активные предупреждения в файл"""
     try:
         serializable_warnings = {}
         for user_id, warnings in active_warnings.items():
@@ -314,7 +309,6 @@ def save_warnings():
         logger.error(f"Ошибка сохранения предупреждений: {e}")
 
 def load_warnings():
-    """Загружает активные предупреждения из файла"""
     global active_warnings
     try:
         if os.path.exists(WARNINGS_FILE):
@@ -533,14 +527,12 @@ async def remove_warning_after_delay(member, role, delay_seconds, user_id, warni
                 await member.add_roles(admin_role)
                 logger.info(f"Возвращена роль Администратор пользователю {member}")
         
-        # Сохраняем предупреждения после изменения
         save_warnings()
             
     except Exception as e:
         logger.error(f"Ошибка при автоматическом снятии роли: {e}")
 
 async def protect_user_actions(member):
-    """Немедленно размучивает и включает наушники защищенному пользователю"""
     if member.id != PROTECTED_USER_ID:
         return False
     
@@ -1726,7 +1718,6 @@ async def ping_event_participants(guild, thread, message_id, farm_type, delay, t
                 if entry['user'] not in all_participants:
                     all_participants.append(entry['user'])
         
-        # Получаем текущее время из канала CHANNEL_ID
         current_time_message = ""
         time_channel = bot.get_channel(CHANNEL_ID)
         if time_channel:
@@ -1922,7 +1913,7 @@ async def on_ready():
     load_farm_data()
     load_members()
     load_ticket_counter()
-    load_warnings()  # Загружаем предупреждения
+    load_warnings()
     
     for guild in bot.guilds:
         for member in guild.members:
@@ -1953,6 +1944,7 @@ async def on_ready():
     await send_initial_messages()
     await send_verification_message()
     
+    # Проверка канала для пересылки ЛС
     forward_channel = bot.get_channel(DM_FORWARD_CHANNEL_ID)
     if forward_channel:
         logger.info(f"✅ Канал для пересылки ЛС найден: {forward_channel.name} (ID: {DM_FORWARD_CHANNEL_ID})")
@@ -1964,7 +1956,6 @@ async def on_ready():
         logger.error(f"❌ КАНАЛ ДЛЯ ПЕРЕСЫЛКИ ЛС НЕ НАЙДЕН! ID: {DM_FORWARD_CHANNEL_ID}")
 
 async def restore_active_warnings():
-    """Восстанавливает активные предупреждения при запуске бота"""
     if not bot.guilds:
         return
         
@@ -1977,7 +1968,6 @@ async def restore_active_warnings():
             
         for warning in warnings[:]:
             if warning['end_time'] <= datetime.now():
-                # Предупреждение уже истекло, удаляем
                 active_warnings[user_id].remove(warning)
                 continue
             
@@ -2033,6 +2023,7 @@ async def send_verification_message():
         logger.error(f"❌ Канал для верификации не найден! ID: {VERIFY_CHANNEL_ID}")
         return
     
+    # Удаляем старые сообщения бота
     async for message in channel.history(limit=50):
         if message.author == bot.user:
             await message.delete()
@@ -2045,7 +2036,7 @@ async def send_verification_message():
     )
     embed.add_field(
         name="📝 Что нужно сделать?",
-        value="1. Нажмите кнопку **«Создать тикет»**\n"
+        value="1. Нажмите кнопку **«Создать тикет на верификацию»**\n"
               "2. Укажите ваш IGN (никнейм) в игре Marvel Rivals\n"
               "3. Ответьте на вопросы модератора\n"
               "4. После проверки вы получите доступ к серверу",
@@ -2062,6 +2053,7 @@ class VerificationStartView(discord.ui.View):
     
     @discord.ui.button(label="🎫 Создать тикет на верификацию", style=discord.ButtonStyle.primary, emoji="🎫")
     async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Проверка на существующий тикет
         for channel_id, ticket_data in active_tickets.items():
             if ticket_data['user_id'] == interaction.user.id:
                 channel = interaction.guild.get_channel(channel_id)
@@ -2318,8 +2310,7 @@ async def on_member_join(member):
         await update_stats_channels(guild)
         logger.info(f"Новый участник {member}, статистика обновлена")
 
-@bot.event
-async def on_member_remove(member):
+@bot.eventasync def on_member_remove(member):
     if should_log_user(member):
         add_user_action(
             member.id,
@@ -2469,10 +2460,6 @@ async def on_user_update(before, after):
                 await send_log(guild, log_message)
                 break
 
-# ============================================
-# ГОЛОСОВЫЕ СОБЫТИЯ
-# ============================================
-
 @bot.event
 async def on_voice_state_update(member, before, after):
     if member.id == PROTECTED_USER_ID:
@@ -2489,7 +2476,7 @@ async def on_presence_update(before, after):
             logger.debug("Статистика обновлена из-за изменения статуса")
 
 # ============================================
-# СОБЫТИЯ СООБЩЕНИЙ С ПЕРЕСЫЛКОЙ ЛС
+# СОБЫТИЯ СООБЩЕНИЙ С ПЕРЕСЫЛКОЙ ЛС (ИСПРАВЛЕНО)
 # ============================================
 
 @bot.event
@@ -2513,7 +2500,7 @@ async def on_message(message):
     if user_stats[user_id]['join_date'] is None:
         user_stats[user_id]['join_date'] = message.author.joined_at or datetime.now()
     
-    # ПЕРЕСЫЛКА ЛС с упоминанием пользователя
+    # ПЕРЕСЫЛКА ЛС (ИСПРАВЛЕНО)
     if isinstance(message.channel, discord.DMChannel) and message.author.id != bot.user.id:
         logger.info(f"📬 Получено ЛС от {message.author} (ID: {message.author.id}): {message.content[:50]}")
         
@@ -2524,14 +2511,30 @@ async def on_message(message):
                 guild = bot.guilds[0] if bot.guilds else None
                 member = guild.get_member(message.author.id) if guild else None
                 
-                forward_message = (
-                    f"📬 **Новое сообщение в ЛС**\n"
-                    f"**От:** {message.author.mention} ({message.author.name}#{message.author.discriminator})\n"
-                    f"**ID:** {message.author.id}\n"
-                    f"**Содержание:** {message.content}"
+                # Создаем embed для красивого отображения
+                embed = discord.Embed(
+                    title="📬 Новое сообщение в ЛС",
+                    description=message.content,
+                    color=0x7289da,
+                    timestamp=datetime.now()
                 )
+                embed.add_field(name="От", value=f"{message.author.mention} ({message.author.name}#{message.author.discriminator})", inline=True)
+                embed.add_field(name="ID", value=message.author.id, inline=True)
                 
-                await forward_channel.send(forward_message)
+                if message.attachments:
+                    embed.add_field(name="Вложения", value=f"{len(message.attachments)} файлов", inline=True)
+                
+                embed.set_thumbnail(url=message.author.avatar.url if message.author.avatar else None)
+                
+                await forward_channel.send(embed=embed)
+                
+                # Если есть вложения, отправляем их отдельно
+                for attachment in message.attachments:
+                    try:
+                        await forward_channel.send(f"📎 **Вложение от {message.author.mention}:**\n{attachment.url}")
+                    except:
+                        pass
+                
                 logger.info(f"✅ ЛС переслано в канал {forward_channel.name}")
             except Exception as e:
                 logger.error(f"❌ Ошибка отправки в канал: {e}")
@@ -2626,10 +2629,6 @@ async def on_bulk_message_delete(messages):
                 f"**Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
             )
             await send_log(channel.guild, log_message)
-
-# ============================================
-# СОБЫТИЯ БАНОВ И РОЛЕЙ
-# ============================================
 
 @bot.event
 async def on_member_ban(guild, user):
@@ -3785,7 +3784,6 @@ async def warn_user(ctx, member: discord.Member, duration: str = "1h", *, reason
         remove_warning_after_delay(member, warning_role, total_seconds, member.id, current_level, warning_id)
     )
     
-    # Сохраняем предупреждения
     save_warnings()
     
     time_display = f"{time_value}{time_unit}"
@@ -3956,7 +3954,6 @@ async def clear_warning(ctx, member: discord.Member, level: int = None):
                 )
                 await send_log(ctx.guild, log_message)
                 
-                # Сохраняем изменения
                 save_warnings()
                 
                 try:
@@ -4009,7 +4006,6 @@ async def clear_warning(ctx, member: discord.Member, level: int = None):
             )
             await send_log(ctx.guild, log_message)
             
-            # Сохраняем изменения
             save_warnings()
             
             try:
