@@ -54,16 +54,16 @@ FARM_MENTION_ROLE_ID = int(os.getenv('FARM_MENTION_ROLE_ID', '106093271100451644
 FARM_ANNOUNCE_CHANNEL_ID = int(os.getenv('FARM_ANNOUNCE_CHANNEL_ID', '1467522457186340874'))
 CHANNEL_ID = int(os.getenv('CHANNEL_ID', '1439798171860734042'))
 
-# ID каналов для пересылки ЛС (НОВЫЙ)
+# ID каналов для пересылки ЛС
 DM_FORWARD_CHANNEL_ID = 1510687725877989587
 
 # ID для системы верификации
-VERIFY_ROLE_ID = 1511817283717169284          # Роль "не верифицирован"
-VERIFY_CHANNEL_ID = 1511830873258066071      # Канал для верификации
-VERIFY_CATEGORY_ID = 1511830555694465164     # Категория для создания тикетов
-VERIFY_ARCHIVE_CATEGORY_ID = 1511831073191891055  # Категория для архивации тикетов
-VERIFIED_ROLE_ID = 1060932711004516445       # Роль "участник" после верификации
-MODERATOR_VERIFY_ROLE_ID = 1060932711004516450  # Роль для верификации людей
+VERIFY_ROLE_ID = 1511817283717169284
+VERIFY_CHANNEL_ID = 1511830873258066071
+VERIFY_CATEGORY_ID = 1511830555694465164
+VERIFY_ARCHIVE_CATEGORY_ID = 1511831073191891055
+VERIFIED_ROLE_ID = 1060932711004516445
+MODERATOR_VERIFY_ROLE_ID = 1060932711004516450
 
 logger.info(f"✅ Загружены настройки из .env файла")
 
@@ -80,7 +80,7 @@ repeating_messages = {}
 user_actions_log = defaultdict(lambda: {'actions': [], 'last_updated': None})
 old_members = {}
 ticket_counter = 1
-active_tickets = {}  # {ticket_channel_id: {'user_id': user_id, 'ign': None, 'answers': []}}
+active_tickets = {}
 active_warnings = defaultdict(list)
 user_stats = defaultdict(lambda: {
     'messages_sent': 0,
@@ -1077,7 +1077,7 @@ async def remove_from_farm_command(ctx, member: discord.Member = None):
         await ctx.send(f"❌ {member.mention} не найден в списке записи")
 
 # ============================================
-# ВСЕ ОСТАЛЬНЫЕ КЛАССЫ VIEW ДЛЯ ФАРМА
+# КЛАССЫ VIEW ДЛЯ ФАРМА
 # ============================================
 
 class FarmUserManagementView(discord.ui.View):
@@ -1789,6 +1789,75 @@ async def create_farm_list_from_button(interaction: discord.Interaction, farm_ty
     await interaction.response.send_message(f"✅ Создан лист для {farm_config['name']}!", ephemeral=True, delete_after=5)
 
 # ============================================
+# КОМАНДА ФАРМ (НОВАЯ, ЗАМЕНЯЕТ !ЛИСТ)
+# ============================================
+
+@bot.command(name='фарм')
+async def farm_command(ctx):
+    """Создать лист записи на фарм (требуется роль создателя фарма)"""
+    if not is_farm_creator(ctx):
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="У вас нет права создавать листы записи! Требуется специальная роль.",
+            color=0xff0000
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    embed = discord.Embed(
+        title="📋 Выбор типа фарма",
+        description="Выберите тип фарма для создания листа записи:",
+        color=0x7289da
+    )
+    
+    embed.add_field(
+        name="⚔️ Фарм 336 в быстрой игре",
+        value="6 ДПС, 3 Саппорта, 3 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Плащ и Кинжал, Белая лиса, Железный кулак",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🎮 Фарм 336 в аркаде",
+        value="6 ДПС, 3 Саппорта, 3 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Плащ и Кинжал, Белая лиса, Железный кулак",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="⚔️ Фарм 222 в быстрой игре",
+        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Запрещены:** Плащ и Кинжал, Белая лиса, Железный кулак",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🎮 Фарм 222 в аркаде",
+        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Запрещены:** Плащ и Кинжал, Белая лиса, Железный кулак",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🏆 КО фарм в аркаде",
+        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Доступны все персонажи**",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🔄 Гибрид фарм",
+        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Доступны все персонажи**",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🔄 Гибрид фарм в аркаде",
+        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Доступны все персонажи**",
+        inline=False
+    )
+    
+    embed.set_footer(text="Нажмите на кнопку ниже чтобы создать лист записи")
+    
+    view = FarmTypeView()
+    await ctx.send(embed=embed, view=view)
+
+# ============================================
 # КОМАНДА ВЕРИФИКАЦИИ (ИСПРАВЛЕНА)
 # ============================================
 
@@ -1944,7 +2013,6 @@ async def on_ready():
     await send_initial_messages()
     await send_verification_message()
     
-    # Проверка канала для пересылки ЛС
     forward_channel = bot.get_channel(DM_FORWARD_CHANNEL_ID)
     if forward_channel:
         logger.info(f"✅ Канал для пересылки ЛС найден: {forward_channel.name} (ID: {DM_FORWARD_CHANNEL_ID})")
@@ -2023,7 +2091,6 @@ async def send_verification_message():
         logger.error(f"❌ Канал для верификации не найден! ID: {VERIFY_CHANNEL_ID}")
         return
     
-    # Удаляем старые сообщения бота
     async for message in channel.history(limit=50):
         if message.author == bot.user:
             await message.delete()
@@ -2053,7 +2120,6 @@ class VerificationStartView(discord.ui.View):
     
     @discord.ui.button(label="🎫 Создать тикет на верификацию", style=discord.ButtonStyle.primary, emoji="🎫")
     async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Проверка на существующий тикет
         for channel_id, ticket_data in active_tickets.items():
             if ticket_data['user_id'] == interaction.user.id:
                 channel = interaction.guild.get_channel(channel_id)
@@ -2477,7 +2543,7 @@ async def on_presence_update(before, after):
             logger.debug("Статистика обновлена из-за изменения статуса")
 
 # ============================================
-# СОБЫТИЯ СООБЩЕНИЙ С ПЕРЕСЫЛКОЙ ЛС (ИСПРАВЛЕНО)
+# ПЕРЕСЫЛКА ЛС В КАНАЛ
 # ============================================
 
 @bot.event
@@ -2501,7 +2567,7 @@ async def on_message(message):
     if user_stats[user_id]['join_date'] is None:
         user_stats[user_id]['join_date'] = message.author.joined_at or datetime.now()
     
-    # ПЕРЕСЫЛКА ЛС (ИСПРАВЛЕНО)
+    # Пересылка ЛС в канал DM_FORWARD_CHANNEL_ID
     if isinstance(message.channel, discord.DMChannel) and message.author.id != bot.user.id:
         logger.info(f"📬 Получено ЛС от {message.author} (ID: {message.author.id}): {message.content[:50]}")
         
@@ -2512,10 +2578,9 @@ async def on_message(message):
                 guild = bot.guilds[0] if bot.guilds else None
                 member = guild.get_member(message.author.id) if guild else None
                 
-                # Создаем embed для красивого отображения
                 embed = discord.Embed(
                     title="📬 Новое сообщение в ЛС",
-                    description=message.content,
+                    description=message.content if message.content else "*Пустое сообщение*",
                     color=0x7289da,
                     timestamp=datetime.now()
                 )
@@ -2529,7 +2594,6 @@ async def on_message(message):
                 
                 await forward_channel.send(embed=embed)
                 
-                # Если есть вложения, отправляем их отдельно
                 for attachment in message.attachments:
                     try:
                         await forward_channel.send(f"📎 **Вложение от {message.author.mention}:**\n{attachment.url}")
@@ -2794,7 +2858,7 @@ async def on_guild_role_update(before, after):
         await send_log(after.guild, log_message)
 
 # ============================================
-# ОСНОВНЫЕ КОМАНДЫ
+# ОСНОВНЫЕ КОМАНДЫ (МОДЕРАЦИЯ, УТИЛИТЫ И Т.Д.)
 # ============================================
 
 @bot.command(name='clear', aliases=['очистить', 'чистка'])
@@ -3117,7 +3181,7 @@ async def help_command(ctx, category: str = None):
         
         commands_list = [
             ("!сбор", "Создать сбор с выбором времени и типа (интерактивно)"),
-            ("!лист", "Создать простой лист записи на фарм"),
+            ("!фарм", "Создать лист записи на фарм (замена !лист)"),
             ("!addfarm @пользователь", "Добавить игрока в фарм в текущем треде (создатели фарма)"),
             ("!removefarm @пользователь", "Удалить игрока из фарма в текущем треде (создатели фарма)"),
             ("!remove_from_farm @участник", "Удалить участника из списка записи"),
@@ -3253,10 +3317,6 @@ async def help_command(ctx, category: str = None):
         embed.set_footer(text="Используйте !помощь для просмотра всех категорий")
     
     await ctx.send(embed=embed)
-
-# ============================================
-# ОСТАЛЬНЫЕ КОМАНДЫ
-# ============================================
 
 @bot.command(name='лог')
 async def user_log_command(ctx, member: discord.Member = None):
@@ -5244,68 +5304,242 @@ async def create_farm_event_command(ctx):
     view = FarmEventCreationView()
     await ctx.send(embed=embed, view=view)
 
-@bot.command(name='лист')
-async def create_farm_menu(ctx):
-    if not is_farm_creator(ctx):
+@bot.command(name='modhelp')
+async def mod_help(ctx):
+    if not is_moderator(ctx):
         embed = discord.Embed(
             title="❌ Ошибка",
-            description="У вас нет права создавать листы записи! Требуется специальная роль.",
+            description="У вас нет прав для использования этой команды! Только модераторы могут просматривать справку.",
             color=0xff0000
         )
         await ctx.send(embed=embed)
         return
     
     embed = discord.Embed(
-        title="📋 Выбор типа фарма",
-        description="Выберите тип фарма для создания листа записи:",
+        title="🛡️ Команды модерации",
+        description="Команды для работы от имени бота. Доступны только для роли модератора.",
+        color=0x7289da
+    )
+    
+    commands_list = [
+        ("!сбор", "Создать сбор на фарм с выбором времени и типа (требуется роль создателя)"),
+        ("!фарм", "Создать лист записи на фарм (замена !лист)"),
+        ("!addfarm @пользователь", "Добавить игрока в фарм в текущем треде (создатели фарма)"),
+        ("!removefarm @пользователь", "Удалить игрока из фарма в текущем треде (создатели фарма)"),
+        ("!верификация", "Верифицировать пользователя в тикете"),
+        ("!say [канал] <текст>", "Отправить сообщение от имени бота"),
+        ("!embed [канал] <заголовок|описание>", "Отправить embed сообщение"),
+        ("!announce [канал] <текст>", "Сделать объявление с @everyone"),
+        ("!dm @пользователь <текст>", "Отправить ЛС от имени бота (без лишнего текста)"),
+        ("!cleanup [количество]", "Удалить сообщения бота"),
+        ("!setup_stats", "Создать каналы статистики"),
+        ("!update_stats", "Обновить статистику"),
+        ("!userstats [@пользователь]", "Показать статистику пользователя"),
+        ("!remove_from_farm @участник", "Удалить участника из списка записи"),
+        ("!clearfarm", "Очистить список записи"),
+        ("!warn @пользователь время причина", "Выдать предупреждение"),
+        ("!warnings [@пользователь]", "Показать предупреждения"),
+        ("!list_warnings", "Показать всех с предупреждениями"),
+        ("!clear_warn @пользователь [уровень]", "Снять предупреждения (только активные)"),
+        ("!sleep gandon", "Выключить бота (только модераторы и voinandr)"),
+        ("!random слова", "Рандомный выбор из списка слов"),
+        ("!random_advanced слова", "Продвинутый рандомайзер с разными разделителями"),
+        ("!random_help", "Помощь по командам рандомайзера"),
+        ("!лог [@пользователь]", "Показать информацию о пользователе"),
+        ("!repeat количество интервал айди_канала сообщение", "Повторяющиеся сообщения"),
+        ("!repeat_list", "Список активных повторяющихся сообщений"),
+        ("!repeat_stop [id_задачи]", "Остановить повторяющееся сообщение"),
+        ("!clear [кол-во]", "Очистить чат (удалить сообщения)"),
+        ("!дела [@пользователь]", "Показать историю действий пользователя"),
+        ("!members", "Показать список старых участников"),
+        ("!members_search [ник]", "Поиск участника по нику"),
+        ("!member_info [@пользователь]", "Информация об участнике"),
+        ("!members_count", "Количество сохраненных участников"),
+        ("!mute @пользователь [время]", "Заглушить в голосовом канале (нельзя защищенного)"),
+        ("!unmute @пользователь", "Разглушить в голосовом канале"),
+        ("!deafen @пользователь [время]", "Отключить наушники (нельзя защищенного)"),
+        ("!undeafen @пользователь", "Включить наушники"),
+        ("!mass_mute [комната]", "Заглушить всех в голосовой комнате (кроме защищенного)"),
+        ("!mass_unmute [комната]", "Разглушить всех в голосовой комнате"),
+        ("!modhelp", "Показать эту справку")
+    ]
+    
+    for cmd, desc in commands_list:
+        embed.add_field(name=cmd, value=desc, inline=False)
+    
+    embed.set_footer(text="[] - опционально, <> - обязательно • Требуются права модератора")
+    await ctx.send(embed=embed)
+
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="У вас нет прав для выполнения этой команды.",
+            color=0xff0000
+        )
+        embed.set_image(url=ERROR_IMAGE_URL)
+        await ctx.send(embed=embed)
+    elif isinstance(error, commands.MemberNotFound):
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="Пользователь не найден.",
+            color=0xff0000
+        )
+        embed.set_image(url=ERROR_IMAGE_URL)
+        await ctx.send(embed=embed)
+    elif isinstance(error, commands.ChannelNotFound):
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="Канал не найден.",
+            color=0xff0000
+        )
+        embed.set_image(url=ERROR_IMAGE_URL)
+        await ctx.send(embed=embed)
+    elif isinstance(error, commands.BadArgument):
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="Неверный аргумент команды.",
+            color=0xff0000
+        )
+        embed.set_image(url=ERROR_IMAGE_URL)
+        await ctx.send(embed=embed)
+    elif isinstance(error, commands.CommandNotFound):
+        pass
+    else:
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description=f"Произошла ошибка: {error}",
+            color=0xff0000
+        )
+        embed.set_image(url=ERROR_IMAGE_URL)
+        await ctx.send(embed=embed)
+    logger.error(f"Ошибка команды: {error}")
+
+if __name__ == "__main__":
+    try:
+        logger.info("🚀 Запуск бота...")
+        logger.info(f"📋 Настройки загружены из .env файла")
+        bot.run(BOT_TOKEN)
+    except Exception as e:
+        logger.error(f"❌ Ошибка запуска бота: {e}")
+@bot.command(name='mass_mute')
+async def mass_mute(ctx, channel: discord.VoiceChannel = None):
+    if not is_moderator(ctx):
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="У вас нет прав для использования этой команды! Только модераторы могут массово заглушать пользователей.",
+            color=0xff0000
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    if channel is None:
+        if ctx.author.voice and ctx.author.voice.channel:
+            channel = ctx.author.voice.channel
+        else:
+            await ctx.send("❌ Вы не находитесь в голосовом канале и не указали канал!")
+            return
+    
+    muted_count = 0
+    for member in channel.members:
+        if member.id != PROTECTED_USER_ID:
+            try:
+                await member.edit(mute=True)
+                muted_count += 1
+            except:
+                pass
+    
+    embed = discord.Embed(
+        title="🔇 Массовое отключение микрофонов",
+        description=f"Заглушено {muted_count} пользователей в канале {channel.mention}",
+        color=0xff9900,
+        timestamp=datetime.now()
+    )
+    embed.add_field(name="Модератор", value=ctx.author.mention, inline=True)
+    
+    await ctx.send(embed=embed)
+    logger.info(f"Массовое отключение микрофонов в канале {channel.name} пользователем {ctx.author}")
+
+@bot.command(name='mass_unmute')
+async def mass_unmute(ctx, channel: discord.VoiceChannel = None):
+    if not is_moderator(ctx):
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="У вас нет прав для использования этой команды!",
+            color=0xff0000
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    if channel is None:
+        if ctx.author.voice and ctx.author.voice.channel:
+            channel = ctx.author.voice.channel
+        else:
+            await ctx.send("❌ Вы не находитесь в голосовом канале и не указали канал!")
+            return
+    
+    unmuted_count = 0
+    for member in channel.members:
+        if member.id != PROTECTED_USER_ID:
+            try:
+                await member.edit(mute=False)
+                unmuted_count += 1
+            except:
+                pass
+    
+    embed = discord.Embed(
+        title="🔊 Массовое включение микрофонов",
+        description=f"Разглушено {unmuted_count} пользователей в канале {channel.mention}",
+        color=0x00ff00,
+        timestamp=datetime.now()
+    )
+    embed.add_field(name="Модератор", value=ctx.author.mention, inline=True)
+    
+    await ctx.send(embed=embed)
+    logger.info(f"Массовое включение микрофонов в канале {channel.name} пользователем {ctx.author}")
+
+@bot.command(name='сбор')
+async def create_farm_event_command(ctx):
+    if not is_farm_creator(ctx):
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="У вас нет права создавать сборы! Требуется специальная роль.",
+            color=0xff0000
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    embed = discord.Embed(
+        title="🎯 Создание сбора на фарм",
+        description="Выберите время и тип фарма для создания сбора:\n\n"
+                   "**🕐 Время** - выберите время по МСК из двух списков\n"
+                   "**⚔️ Фарм** - выберите тип фарма\n"
+                   "**📢 Создать** - создаст сбор с упоминанием Фарм Лордов",
         color=0x7289da
     )
     
     embed.add_field(
-        name="⚔️ Фарм 336 в быстрой игре",
-        value="6 ДПС, 3 Саппорта, 3 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Плащ и Кинжал, Белая лиса, Железный кулак",
+        name="🕐 Доступное время",
+        value="• **Утро/День:** 00:00 - 11:30 МСК\n• **День/Вечер:** 12:00 - 23:30 МСК\n• Интервалы по 30 минут",
         inline=False
     )
     
     embed.add_field(
-        name="🎮 Фарм 336 в аркаде",
-        value="6 ДПС, 3 Саппорта, 3 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Плащ и Кинжал, Белая лиса, Железный кулак",
+        name="⚔️ Типы фарма",
+        value="• **Фарм 336 в быстрой игре** - 6 ДПС, 3 Саппорта, 3 Танка\n"
+              "• **Фарм 336 в аркаде** - 6 ДПС, 3 Саппорта, 3 Танка\n"
+              "• **Фарм 222 в быстрой игре** - 2 команды по 2 ДПС, 2 Саппорта, 2 Танка\n"
+              "• **Фарм 222 в аркаде** - 2 команды по 2 ДПС, 2 Саппорта, 2 Танка\n"
+              "• **КО фарм в аркаде** - 2 команды по 2 ДПС, 2 Саппорта, 2 Танка\n"
+              "• **Гибрид фарм** - 2 команды по 2 ДПС, 2 Саппорта, 2 Танка\n"
+              "• **Гибрид фарм в аркаде** - 2 команды по 2 ДПС, 2 Саппорта, 2 Танка",
         inline=False
     )
     
-    embed.add_field(
-        name="⚔️ Фарм 222 в быстрой игре",
-        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Запрещены:** Плащ и Кинжал, Белая лиса, Железный кулак",
-        inline=False
-    )
+    embed.set_footer(text="После создания сбора будет создан тред для записи")
     
-    embed.add_field(
-        name="🎮 Фарм 222 в аркаде",
-        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Запрещены:** Плащ и Кинжал, Белая лиса, Железный кулак",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="🏆 КО фарм в аркаде",
-        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Доступны все персонажи**",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="🔄 Гибрид фарм",
-        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Доступны все персонажи**",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="🔄 Гибрид фарм в аркаде",
-        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Доступны все персонажи**",
-        inline=False
-    )
-    
-    embed.set_footer(text="Нажмите на кнопку ниже чтобы создать лист записи")
-    
-    view = FarmTypeView()
+    view = FarmEventCreationView()
     await ctx.send(embed=embed, view=view)
 
 @bot.command(name='modhelp')
@@ -5327,7 +5561,7 @@ async def mod_help(ctx):
     
     commands_list = [
         ("!сбор", "Создать сбор на фарм с выбором времени и типа (требуется роль создателя)"),
-        ("!лист", "Создать простой лист записи на фарм (требуется роль создателя)"),
+        ("!фарм", "Создать лист записи на фарм (замена !лист)"),
         ("!addfarm @пользователь", "Добавить игрока в фарм в текущем треде (создатели фарма)"),
         ("!removefarm @пользователь", "Удалить игрока из фарма в текущем треде (создатели фарма)"),
         ("!верификация", "Верифицировать пользователя в тикете"),
