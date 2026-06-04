@@ -32,15 +32,16 @@ intents.moderation = True
 bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
 # ============================================
-# ЗАГРУЗКА ТОКЕНА И НАСТРОЕК ИЗ .env ФАЙЛА
+# ID КАНАЛОВ И РОЛЕЙ (ВСЕ ПРЯМО В КОДЕ)
 # ============================================
 
+# Основные ID
 BOT_TOKEN = os.getenv('BOT_TOKEN')
-
 if not BOT_TOKEN:
     logger.error("❌ ТОКЕН НЕ НАЙДЕН! Создайте файл .env и добавьте строку: BOT_TOKEN=ваш_токен")
     exit(1)
 
+# ID ролей и каналов
 MODERATOR_USER_IDS = [int(x.strip()) for x in os.getenv('MODERATOR_USER_IDS', '1060932711004516450').split(',')]
 MODERATOR_ROLE_IDS = [int(x.strip()) for x in os.getenv('MODERATOR_ROLE_IDS', '1060932711004516448').split(',')]
 FARM_CREATOR_ROLE_ID = int(os.getenv('FARM_CREATOR_ROLE_ID', '1440978417217568856'))
@@ -58,13 +59,14 @@ CHANNEL_ID = int(os.getenv('CHANNEL_ID', '1439798171860734042'))
 DM_FORWARD_CHANNEL_ID = 1510687725877989587  # Основной канал для пересылки
 
 # ID для системы верификации
-VERIFY_ROLE_ID = 1511817283717169284  # Роль "не верифицирован" (выдается при входе)
-VERIFY_CHANNEL_ID = 1511830873258066071  # Канал, который видит неверифицированный пользователь
-VERIFY_CATEGORY_ID = 1511830555694465164  # Категория для создания тикетов
+VERIFY_ROLE_ID = 1511817283717169284          # Роль "не верифицирован" (выдается при входе)
+VERIFY_CHANNEL_ID = 1511830873258066071      # Канал, который видит неверифицированный пользователь
+VERIFY_CATEGORY_ID = 1511830555694465164     # Категория для создания тикетов
 VERIFY_ARCHIVE_CATEGORY_ID = 1511831073191891055  # Категория для архивации тикетов
-VERIFIED_ROLE_ID = 1060932711004516445  # Роль "участник" после верификации
+VERIFIED_ROLE_ID = 1060932711004516445       # Роль "участник" после верификации
+MODERATOR_VERIFY_ROLE_ID = 1060932711004516450  # Роль для верификации людей
 
-logger.info(f"✅ Загружены настройки из .env файла")
+logger.info(f"✅ Загружены настройки из .env файла и ID каналов")
 
 # Файлы для сохранения данных
 MARRIAGES_FILE = "marriages.json"
@@ -454,6 +456,18 @@ def is_moderator(ctx_or_user):
             return True
     
     return False
+
+def can_verify(ctx):
+    """Проверка, может ли пользователь верифицировать других"""
+    if ctx.author.id in MODERATOR_USER_IDS:
+        return True
+    
+    if hasattr(ctx.author, 'roles'):
+        for role in ctx.author.roles:
+            if role.id == MODERATOR_VERIFY_ROLE_ID:
+                return True
+    
+    return ctx.author.guild_permissions.administrator
 
 def is_farm_creator(ctx):
     if is_moderator(ctx):
@@ -1792,16 +1806,17 @@ async def create_farm_list_from_button(interaction: discord.Interaction, farm_ty
     await interaction.response.send_message(f"✅ Создан лист для {farm_config['name']}!", ephemeral=True, delete_after=5)
 
 # ============================================
-# КОМАНДА ВЕРИФИКАЦИИ
+# КОМАНДА ВЕРИФИКАЦИИ (ИСПРАВЛЕНА)
 # ============================================
 
 @bot.command(name='верификация')
 async def verify_command(ctx):
     """Команда для модераторов - верифицировать пользователя в тикете"""
-    if not is_moderator(ctx):
+    # Проверяем права через специальную функцию can_verify
+    if not can_verify(ctx):
         embed = discord.Embed(
             title="❌ Ошибка",
-            description="У вас нет прав для использования этой команды!",
+            description="У вас нет прав для использования этой команды! Требуется роль модератора (1060932711004516450)",
             color=0xff0000
         )
         await ctx.send(embed=embed)
@@ -1836,8 +1851,9 @@ class VerifyConfirmView(discord.ui.View):
     
     @discord.ui.button(label="✅ Да", style=discord.ButtonStyle.success)
     async def confirm_yes(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not is_moderator(interaction):
-            await interaction.response.send_message("❌ У вас нет прав!", ephemeral=True)
+        # Проверяем права через can_verify
+        if not can_verify(interaction):
+            await interaction.response.send_message("❌ У вас нет прав для верификации!", ephemeral=True)
             return
         
         channel = interaction.guild.get_channel(self.channel_id)
@@ -1868,7 +1884,10 @@ class VerifyConfirmView(discord.ui.View):
         ticket_data = active_tickets.get(self.channel_id, {})
         ign = ticket_data.get('ign', 'unknown')
         new_name = f"✅-{ign.lower().replace(' ', '-')[:50]}"
-        await channel.edit(name=new_name)
+        try:
+            await channel.edit(name=new_name)
+        except:
+            pass
         
         # Отправляем сообщение в канал
         embed = discord.Embed(
@@ -1889,7 +1908,7 @@ class VerifyConfirmView(discord.ui.View):
     
     @discord.ui.button(label="❌ Нет", style=discord.ButtonStyle.danger)
     async def confirm_no(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not is_moderator(interaction):
+        if not can_verify(interaction):
             await interaction.response.send_message("❌ У вас нет прав!", ephemeral=True)
             return
         
@@ -2022,7 +2041,11 @@ class VerificationStartView(discord.ui.View):
             interaction.guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
         }
         
-        # Добавляем права для модераторов
+        # Добавляем права для модераторов (по ID роли)
+        mod_verify_role = interaction.guild.get_role(MODERATOR_VERIFY_ROLE_ID)
+        if mod_verify_role:
+            overwrites[mod_verify_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+        
         for mod_role_id in MODERATOR_ROLE_IDS:
             mod_role = interaction.guild.get_role(mod_role_id)
             if mod_role:
@@ -2068,6 +2091,8 @@ class VerificationStartView(discord.ui.View):
         
         # Уведомляем модераторов
         mod_mention = ""
+        if mod_verify_role:
+            mod_mention = mod_verify_role.mention + " "
         for mod_role_id in MODERATOR_ROLE_IDS:
             mod_role = interaction.guild.get_role(mod_role_id)
             if mod_role:
@@ -6124,8 +6149,3 @@ if __name__ == "__main__":
         bot.run(BOT_TOKEN)
     except Exception as e:
         logger.error(f"❌ Ошибка запуска бота: {e}")
-        VERIFY_ROLE_ID = 1511817283717169284  # Роль "не верифицирован"
-VERIFY_CHANNEL_ID = 1511830873258066071  # Канал для сообщения верификации
-VERIFY_CATEGORY_ID = 1511830555694465164  # Категория для создания тикетов
-VERIFY_ARCHIVE_CATEGORY_ID = 1511831073191891055  # Категория для архивации тикетов
-VERIFIED_ROLE_ID = 1060932711004516445  # Роль "участник"
