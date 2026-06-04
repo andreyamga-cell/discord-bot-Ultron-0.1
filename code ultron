@@ -2310,7 +2310,8 @@ async def on_member_join(member):
         await update_stats_channels(guild)
         logger.info(f"Новый участник {member}, статистика обновлена")
 
-@bot.eventasync def on_member_remove(member):
+@bot.event
+async def on_member_remove(member):
     if should_log_user(member):
         add_user_action(
             member.id,
