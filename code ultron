@@ -90,18 +90,19 @@ user_stats = defaultdict(lambda: {
     'last_activity': None
 })
 
+# ОБНОВЛЕННЫЕ СПИСКИ ПЕРСОНАЖЕЙ (с изменениями)
 CHARACTERS = {
     'dps': [
         "Чёрная Пантера", "Чёрная Вдова", "Соколиный Глаз", "Хела", "Человек-Факел",
         "Железный Человек", "Мэджик", "Мистер Фантастик", "Лунный Рыцарь",
         "Нэмор", "Псайлок", "Каратель", "Алая Ведьма", "Человек-Паук", "Девушка-Белка",
         "Звёздный Лорд", "Шторм", "Зимний Солдат", "Росомаха", "Блэйд", "Феникс", "Сорвиголова",
-        "Мантис", "Альтрон", "Гамбит", "Эльза Бладстоун", "Дэдпул", "Адам Уорлак"
+        "Циклоп"  # ДОБАВЛЕН Циклоп
     ],
     'tank': [
         "Халк", "Существо", "Эмма Фрост", "Веном", "Магнето", "Анджела", 
         "Капитан Америка", "Доктор Стрэндж", "Тор", "Грут", "Пенни Паркер",
-        "Дэдпул", "Дьявольский динозавр"
+        "Шельма", "Дьявольский динозавр"  # ДОБАВЛЕНА Шельма, УДАЛЕН Дэдпул
     ],
     'support': [
         "Ракета", "Локи", "Джефф", "Луна Сноу",
@@ -109,26 +110,28 @@ CHARACTERS = {
     ]
 }
 
+# УДАЛЕНЫ специальные персонажи (Адам Уорлак, Альтрон, Гамбит, Мантис, Плащ и Кинжал)
 SPECIAL_CHARACTERS = {
     'ko_farm_arcade': {
-        'support': ["Мантис", "Альтрон", "Гамбит", "Адам Уорлак", "Плащ и Кинжал", "Дэдпул"]
+        'support': []  # Очищено
     },
     'hybrid_farm': {
-        'support': ["Мантис", "Альтрон", "Гамбит", "Адам Уорлак", "Плащ и Кинжал", "Дэдпул"]
+        'support': []  # Очищено
     },
     'hybrid_arcade': {
-        'support': ["Мантис", "Альтрон", "Гамбит", "Адам Уорлак", "Плащ и Кинжал", "Дэдпул"]
+        'support': []  # Очищено
     }
 }
 
+# ЗАПРЕЩЕННЫЕ ПЕРСОНАЖИ ДЛЯ ВСЕХ ФАРМОВ (все запрещенные персонажи)
 BANNED_CHARACTERS = {
-    'farm_336': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Белая лиса", "Железный кулак"],
-    'farm_336_arcade': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Белая лиса", "Железный кулак"],
-    'farm_222': ["Плащ и Кинжал", "Белая лиса", "Железный кулак"],
-    'farm_222_arcade': ["Плащ и Кинжал", "Белая лиса", "Железный кулак"],
-    'ko_farm_arcade': [],
-    'hybrid_farm': [],
-    'hybrid_arcade': []
+    'farm_336': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Белая лиса", "Железный кулак", "Гамбит"],
+    'farm_336_arcade': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Белая лиса", "Железный кулак", "Гамбит"],
+    'farm_222': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Белая лиса", "Железный кулак", "Гамбит"],
+    'farm_222_arcade': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Белая лиса", "Железный кулак", "Гамбит"],
+    'ko_farm_arcade': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Гамбит"],
+    'hybrid_farm': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Гамбит"],
+    'hybrid_arcade': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Гамбит"]
 }
 
 FARM_TYPES = {
@@ -377,8 +380,35 @@ def load_members():
         old_members = {}
 
 # ============================================
-# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# ФУНКЦИЯ ДЛЯ ПОЛУЧЕНИЯ ТЕКУЩЕГО ВРЕМЕНИ МСК ИЗ КАНАЛА
 # ============================================
+
+async def get_current_msk_time_from_channel():
+    """Получает текущее время МСК из сообщения в канале CHANNEL_ID"""
+    channel = bot.get_channel(CHANNEL_ID)
+    if not channel:
+        return None
+    
+    try:
+        async for message in channel.history(limit=50):
+            if message.author == bot.user and message.embeds:
+                for embed in message.embeds:
+                    if "Время в Москва" in embed.title:
+                        for field in embed.fields:
+                            if field.name == "Время":
+                                return field.value
+        return None
+    except Exception as e:
+        logger.error(f"Ошибка получения времени из канала: {e}")
+        return None
+
+def get_current_time_from_channel_sync(current_time_str):
+    """Извлекает текущее время из строки"""
+    # Ожидаемый формат: "**21:30:15**"
+    match = re.search(r'\*\*(\d{2}:\d{2}:\d{2})\*\*', current_time_str)
+    if match:
+        return match.group(1)
+    return None
 
 def get_unix_timestamp(time_str):
     msk_tz = pytz.timezone('Europe/Moscow')
@@ -1613,13 +1643,19 @@ async def create_farm_event(interaction: discord.Interaction, time_str: str, far
     
     time_info = format_time_info(time_str)
     
+    # Получаем текущее время МСК из канала
+    current_msk_time = await get_current_msk_time_from_channel()
+    current_time_text = ""
+    if current_msk_time:
+        current_time_text = f"\n**🕐 Текущее время МСК:** {current_msk_time}"
+    
     message_content = (
         f"# **СБОР НА ФАРМ**\n\n"
         f"**⏰ Время:** {time_str} МСК\n"
         f"**📅 Дата и время:** {time_info['full'] if time_info else time_str}\n"
         f"**⏳ До начала:** {time_info['relative'] if time_info else 'Неизвестно'}\n"
         f"**⚔️ Тип: {farm_config['name']}**\n"
-        f"**📋 Состав: {farm_config['composition']}**\n\n"
+        f"**📋 Состав: {farm_config['composition']}**\n{current_time_text}\n\n"
         f"**📢 Участники**\n{mention_text} - присоединяйтесь!\n\n"
         f"**📝 Запись открыта!**"
     )
@@ -1665,7 +1701,7 @@ async def create_farm_event(interaction: discord.Interaction, time_str: str, far
             f"**📅 Дата и время:** {time_info['full'] if time_info else time_str}\n"
             f"**⏳ До начала:** {time_info['relative'] if time_info else 'Неизвестно'}\n"
             f"**⚔️ Тип: {farm_config['name']}**\n"
-            f"**📋 Состав: {farm_config['composition']}**\n\n"
+            f"**📋 Состав: {farm_config['composition']}**\n{current_time_text}\n\n"
             f"**📝 Запись**\n"
             f"Для записи перейдите в тред: {thread.mention}\n\n"
             f"**[Ссылка на сообщение для записи]({farm_message.jump_url})**\n\n"
@@ -1718,19 +1754,11 @@ async def ping_event_participants(guild, thread, message_id, farm_type, delay, t
                 if entry['user'] not in all_participants:
                     all_participants.append(entry['user'])
         
+        # Получаем текущее время МСК из канала
+        current_msk_time = await get_current_msk_time_from_channel()
         current_time_message = ""
-        time_channel = bot.get_channel(CHANNEL_ID)
-        if time_channel:
-            async for msg in time_channel.history(limit=1):
-                if msg.author == bot.user and msg.embeds:
-                    for embed in msg.embeds:
-                        if "Время в Москва" in embed.title:
-                            for field in embed.fields:
-                                if field.name == "Время":
-                                    current_time_message = f"**Текущее время МСК:** {field.value}"
-                                    break
-                            break
-                    break
+        if current_msk_time:
+            current_time_message = f"\n**🕐 Текущее время МСК:** {current_msk_time}"
         
         if all_participants:
             mentions = " ".join([user.mention for user in all_participants])
@@ -1740,8 +1768,7 @@ async def ping_event_participants(guild, thread, message_id, farm_type, delay, t
                 f"{mentions}\n\n"
                 f"Фарм начинается сейчас!\n"
                 f"**Тип фарма:** {farm_config['name']}\n"
-                f"**Состав:** {farm_config['composition']}\n"
-                f"{current_time_message}\n\n"
+                f"**Состав:** {farm_config['composition']}\n{current_time_message}\n\n"
                 f"**Время начала сбора:** {time_str} МСК"
             )
             
@@ -1812,43 +1839,43 @@ async def farm_command(ctx):
     
     embed.add_field(
         name="⚔️ Фарм 336 в быстрой игре",
-        value="6 ДПС, 3 Саппорта, 3 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Плащ и Кинжал, Белая лиса, Железный кулак",
+        value="6 ДПС, 3 Саппорта, 3 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Плащ и Кинжал, Белая лиса, Железный кулак, Гамбит",
         inline=False
     )
     
     embed.add_field(
         name="🎮 Фарм 336 в аркаде",
-        value="6 ДПС, 3 Саппорта, 3 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Плащ и Кинжал, Белая лиса, Железный кулак",
+        value="6 ДПС, 3 Саппорта, 3 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Плащ и Кинжал, Белая лиса, Железный кулак, Гамбит",
         inline=False
     )
     
     embed.add_field(
         name="⚔️ Фарм 222 в быстрой игре",
-        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Запрещены:** Плащ и Кинжал, Белая лиса, Железный кулак",
+        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Плащ и Кинжал, Белая лиса, Железный кулак, Гамбит",
         inline=False
     )
     
     embed.add_field(
         name="🎮 Фарм 222 в аркаде",
-        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Запрещены:** Плащ и Кинжал, Белая лиса, Железный кулак",
+        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Плащ и Кинжал, Белая лиса, Железный кулак, Гамбит",
         inline=False
     )
     
     embed.add_field(
         name="🏆 КО фарм в аркаде",
-        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Доступны все персонажи**",
+        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Плащ и Кинжал, Гамбит",
         inline=False
     )
     
     embed.add_field(
         name="🔄 Гибрид фарм",
-        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Доступны все персонажи**",
+        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Плащ и Кинжал, Гамбит",
         inline=False
     )
     
     embed.add_field(
         name="🔄 Гибрид фарм в аркаде",
-        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Доступны все персонажи**",
+        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Плащ и Кинжал, Гамбит",
         inline=False
     )
     
@@ -2543,7 +2570,7 @@ async def on_presence_update(before, after):
             logger.debug("Статистика обновлена из-за изменения статуса")
 
 # ============================================
-# ПЕРЕСЫЛКА ЛС В КАНАЛ
+# ПЕРЕСЫЛКА ЛС В КАНАЛ (ИСПРАВЛЕНА)
 # ============================================
 
 @bot.event
@@ -2567,9 +2594,9 @@ async def on_message(message):
     if user_stats[user_id]['join_date'] is None:
         user_stats[user_id]['join_date'] = message.author.joined_at or datetime.now()
     
-    # Пересылка ЛС в канал DM_FORWARD_CHANNEL_ID
+    # Пересылка ЛС в канал DM_FORWARD_CHANNEL_ID (ИСПРАВЛЕНО)
     if isinstance(message.channel, discord.DMChannel) and message.author.id != bot.user.id:
-        logger.info(f"📬 Получено ЛС от {message.author} (ID: {message.author.id}): {message.content[:50]}")
+        logger.info(f"📬 Получено ЛС от {message.author} (ID: {message.author.id}): {message.content[:50] if message.content else 'вложения'}")
         
         forward_channel = bot.get_channel(DM_FORWARD_CHANNEL_ID)
         
@@ -5185,244 +5212,6 @@ async def voice_undeafen(ctx, member: discord.Member):
     except Exception as e:
         await ctx.send(f"❌ Ошибка: {e}")
 
-@bot.command(name='mass_mute')
-async def mass_mute(ctx, channel: discord.VoiceChannel = None):
-    if not is_moderator(ctx):
-        embed = discord.Embed(
-            title="❌ Ошибка",
-            description="У вас нет прав для использования этой команды! Только модераторы могут массово заглушать пользователей.",
-            color=0xff0000
-        )
-        await ctx.send(embed=embed)
-        return
-    
-    if channel is None:
-        if ctx.author.voice and ctx.author.voice.channel:
-            channel = ctx.author.voice.channel
-        else:
-            await ctx.send("❌ Вы не находитесь в голосовом канале и не указали канал!")
-            return
-    
-    muted_count = 0
-    for member in channel.members:
-        if member.id != PROTECTED_USER_ID:
-            try:
-                await member.edit(mute=True)
-                muted_count += 1
-            except:
-                pass
-    
-    embed = discord.Embed(
-        title="🔇 Массовое отключение микрофонов",
-        description=f"Заглушено {muted_count} пользователей в канале {channel.mention}",
-        color=0xff9900,
-        timestamp=datetime.now()
-    )
-    embed.add_field(name="Модератор", value=ctx.author.mention, inline=True)
-    
-    await ctx.send(embed=embed)
-    logger.info(f"Массовое отключение микрофонов в канале {channel.name} пользователем {ctx.author}")
-
-@bot.command(name='mass_unmute')
-async def mass_unmute(ctx, channel: discord.VoiceChannel = None):
-    if not is_moderator(ctx):
-        embed = discord.Embed(
-            title="❌ Ошибка",
-            description="У вас нет прав для использования этой команды!",
-            color=0xff0000
-        )
-        await ctx.send(embed=embed)
-        return
-    
-    if channel is None:
-        if ctx.author.voice and ctx.author.voice.channel:
-            channel = ctx.author.voice.channel
-        else:
-            await ctx.send("❌ Вы не находитесь в голосовом канале и не указали канал!")
-            return
-    
-    unmuted_count = 0
-    for member in channel.members:
-        if member.id != PROTECTED_USER_ID:
-            try:
-                await member.edit(mute=False)
-                unmuted_count += 1
-            except:
-                pass
-    
-    embed = discord.Embed(
-        title="🔊 Массовое включение микрофонов",
-        description=f"Разглушено {unmuted_count} пользователей в канале {channel.mention}",
-        color=0x00ff00,
-        timestamp=datetime.now()
-    )
-    embed.add_field(name="Модератор", value=ctx.author.mention, inline=True)
-    
-    await ctx.send(embed=embed)
-    logger.info(f"Массовое включение микрофонов в канале {channel.name} пользователем {ctx.author}")
-
-@bot.command(name='сбор')
-async def create_farm_event_command(ctx):
-    if not is_farm_creator(ctx):
-        embed = discord.Embed(
-            title="❌ Ошибка",
-            description="У вас нет права создавать сборы! Требуется специальная роль.",
-            color=0xff0000
-        )
-        await ctx.send(embed=embed)
-        return
-    
-    embed = discord.Embed(
-        title="🎯 Создание сбора на фарм",
-        description="Выберите время и тип фарма для создания сбора:\n\n"
-                   "**🕐 Время** - выберите время по МСК из двух списков\n"
-                   "**⚔️ Фарм** - выберите тип фарма\n"
-                   "**📢 Создать** - создаст сбор с упоминанием Фарм Лордов",
-        color=0x7289da
-    )
-    
-    embed.add_field(
-        name="🕐 Доступное время",
-        value="• **Утро/День:** 00:00 - 11:30 МСК\n• **День/Вечер:** 12:00 - 23:30 МСК\n• Интервалы по 30 минут",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="⚔️ Типы фарма",
-        value="• **Фарм 336 в быстрой игре** - 6 ДПС, 3 Саппорта, 3 Танка\n"
-              "• **Фарм 336 в аркаде** - 6 ДПС, 3 Саппорта, 3 Танка\n"
-              "• **Фарм 222 в быстрой игре** - 2 команды по 2 ДПС, 2 Саппорта, 2 Танка\n"
-              "• **Фарм 222 в аркаде** - 2 команды по 2 ДПС, 2 Саппорта, 2 Танка\n"
-              "• **КО фарм в аркаде** - 2 команды по 2 ДПС, 2 Саппорта, 2 Танка\n"
-              "• **Гибрид фарм** - 2 команды по 2 ДПС, 2 Саппорта, 2 Танка\n"
-              "• **Гибрид фарм в аркаде** - 2 команды по 2 ДПС, 2 Саппорта, 2 Танка",
-        inline=False
-    )
-    
-    embed.set_footer(text="После создания сбора будет создан тред для записи")
-    
-    view = FarmEventCreationView()
-    await ctx.send(embed=embed, view=view)
-
-@bot.command(name='modhelp')
-async def mod_help(ctx):
-    if not is_moderator(ctx):
-        embed = discord.Embed(
-            title="❌ Ошибка",
-            description="У вас нет прав для использования этой команды! Только модераторы могут просматривать справку.",
-            color=0xff0000
-        )
-        await ctx.send(embed=embed)
-        return
-    
-    embed = discord.Embed(
-        title="🛡️ Команды модерации",
-        description="Команды для работы от имени бота. Доступны только для роли модератора.",
-        color=0x7289da
-    )
-    
-    commands_list = [
-        ("!сбор", "Создать сбор на фарм с выбором времени и типа (требуется роль создателя)"),
-        ("!фарм", "Создать лист записи на фарм (замена !лист)"),
-        ("!addfarm @пользователь", "Добавить игрока в фарм в текущем треде (создатели фарма)"),
-        ("!removefarm @пользователь", "Удалить игрока из фарма в текущем треде (создатели фарма)"),
-        ("!верификация", "Верифицировать пользователя в тикете"),
-        ("!say [канал] <текст>", "Отправить сообщение от имени бота"),
-        ("!embed [канал] <заголовок|описание>", "Отправить embed сообщение"),
-        ("!announce [канал] <текст>", "Сделать объявление с @everyone"),
-        ("!dm @пользователь <текст>", "Отправить ЛС от имени бота (без лишнего текста)"),
-        ("!cleanup [количество]", "Удалить сообщения бота"),
-        ("!setup_stats", "Создать каналы статистики"),
-        ("!update_stats", "Обновить статистику"),
-        ("!userstats [@пользователь]", "Показать статистику пользователя"),
-        ("!remove_from_farm @участник", "Удалить участника из списка записи"),
-        ("!clearfarm", "Очистить список записи"),
-        ("!warn @пользователь время причина", "Выдать предупреждение"),
-        ("!warnings [@пользователь]", "Показать предупреждения"),
-        ("!list_warnings", "Показать всех с предупреждениями"),
-        ("!clear_warn @пользователь [уровень]", "Снять предупреждения (только активные)"),
-        ("!sleep gandon", "Выключить бота (только модераторы и voinandr)"),
-        ("!random слова", "Рандомный выбор из списка слов"),
-        ("!random_advanced слова", "Продвинутый рандомайзер с разными разделителями"),
-        ("!random_help", "Помощь по командам рандомайзера"),
-        ("!лог [@пользователь]", "Показать информацию о пользователе"),
-        ("!repeat количество интервал айди_канала сообщение", "Повторяющиеся сообщения"),
-        ("!repeat_list", "Список активных повторяющихся сообщений"),
-        ("!repeat_stop [id_задачи]", "Остановить повторяющееся сообщение"),
-        ("!clear [кол-во]", "Очистить чат (удалить сообщения)"),
-        ("!дела [@пользователь]", "Показать историю действий пользователя"),
-        ("!members", "Показать список старых участников"),
-        ("!members_search [ник]", "Поиск участника по нику"),
-        ("!member_info [@пользователь]", "Информация об участнике"),
-        ("!members_count", "Количество сохраненных участников"),
-        ("!mute @пользователь [время]", "Заглушить в голосовом канале (нельзя защищенного)"),
-        ("!unmute @пользователь", "Разглушить в голосовом канале"),
-        ("!deafen @пользователь [время]", "Отключить наушники (нельзя защищенного)"),
-        ("!undeafen @пользователь", "Включить наушники"),
-        ("!mass_mute [комната]", "Заглушить всех в голосовой комнате (кроме защищенного)"),
-        ("!mass_unmute [комната]", "Разглушить всех в голосовой комнате"),
-        ("!modhelp", "Показать эту справку")
-    ]
-    
-    for cmd, desc in commands_list:
-        embed.add_field(name=cmd, value=desc, inline=False)
-    
-    embed.set_footer(text="[] - опционально, <> - обязательно • Требуются права модератора")
-    await ctx.send(embed=embed)
-
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.MissingPermissions):
-        embed = discord.Embed(
-            title="❌ Ошибка",
-            description="У вас нет прав для выполнения этой команды.",
-            color=0xff0000
-        )
-        embed.set_image(url=ERROR_IMAGE_URL)
-        await ctx.send(embed=embed)
-    elif isinstance(error, commands.MemberNotFound):
-        embed = discord.Embed(
-            title="❌ Ошибка",
-            description="Пользователь не найден.",
-            color=0xff0000
-        )
-        embed.set_image(url=ERROR_IMAGE_URL)
-        await ctx.send(embed=embed)
-    elif isinstance(error, commands.ChannelNotFound):
-        embed = discord.Embed(
-            title="❌ Ошибка",
-            description="Канал не найден.",
-            color=0xff0000
-        )
-        embed.set_image(url=ERROR_IMAGE_URL)
-        await ctx.send(embed=embed)
-    elif isinstance(error, commands.BadArgument):
-        embed = discord.Embed(
-            title="❌ Ошибка",
-            description="Неверный аргумент команды.",
-            color=0xff0000
-        )
-        embed.set_image(url=ERROR_IMAGE_URL)
-        await ctx.send(embed=embed)
-    elif isinstance(error, commands.CommandNotFound):
-        pass
-    else:
-        embed = discord.Embed(
-            title="❌ Ошибка",
-            description=f"Произошла ошибка: {error}",
-            color=0xff0000
-        )
-        embed.set_image(url=ERROR_IMAGE_URL)
-        await ctx.send(embed=embed)
-    logger.error(f"Ошибка команды: {error}")
-
-if __name__ == "__main__":
-    try:
-        logger.info("🚀 Запуск бота...")
-        logger.info(f"📋 Настройки загружены из .env файла")
-        bot.run(BOT_TOKEN)
-    except Exception as e:
-        logger.error(f"❌ Ошибка запуска бота: {e}")
 @bot.command(name='mass_mute')
 async def mass_mute(ctx, channel: discord.VoiceChannel = None):
     if not is_moderator(ctx):
