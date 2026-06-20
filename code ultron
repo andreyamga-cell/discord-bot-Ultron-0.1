@@ -57,6 +57,9 @@ CHANNEL_ID = int(os.getenv('CHANNEL_ID', '1439798171860734042'))
 # ID каналов для пересылки ЛС
 DM_FORWARD_CHANNEL_ID = 1510687725877989587
 
+# ID канала для логов фарма
+FARM_LOG_CHANNEL_ID = 1511828459087724624
+
 # ID для системы верификации
 VERIFY_ROLE_ID = 1511817283717169284
 VERIFY_CHANNEL_ID = 1511830873258066071
@@ -72,6 +75,7 @@ FARM_DATA_FILE = "farm_data.pkl"
 MEMBERS_FILE = "members.json"
 TICKET_COUNTER_FILE = "ticket_counter.json"
 WARNINGS_FILE = "warnings.pkl"
+FARM_STATS_FILE = "farm_stats.pkl"
 
 farm_messages = {}
 farm_events = {}
@@ -89,41 +93,52 @@ user_stats = defaultdict(lambda: {
     'join_date': None,
     'last_activity': None
 })
+farm_stats = defaultdict(lambda: defaultdict(int))  # {user_id: {character: count}}
 
-# ОБНОВЛЕННЫЕ СПИСКИ ПЕРСОНАЖЕЙ (с изменениями)
+# ОБНОВЛЕННЫЕ СПИСКИ ПЕРСОНАЖЕЙ
 CHARACTERS = {
     'dps': [
         "Чёрная Пантера", "Чёрная Вдова", "Соколиный Глаз", "Хела", "Человек-Факел",
         "Железный Человек", "Мэджик", "Мистер Фантастик", "Лунный Рыцарь",
         "Нэмор", "Псайлок", "Каратель", "Алая Ведьма", "Человек-Паук", "Девушка-Белка",
         "Звёздный Лорд", "Шторм", "Зимний Солдат", "Росомаха", "Блэйд", "Феникс", "Сорвиголова",
-        "Циклоп"  # ДОБАВЛЕН Циклоп
+        "Циклоп", "Эльза Бладстоун"
     ],
     'tank': [
         "Халк", "Существо", "Эмма Фрост", "Веном", "Магнето", "Анджела", 
         "Капитан Америка", "Доктор Стрэндж", "Тор", "Грут", "Пенни Паркер",
-        "Шельма", "Дьявольский динозавр"  # ДОБАВЛЕНА Шельма, УДАЛЕН Дэдпул
+        "Шельма", "Дьявольский динозавр"
     ],
     'support': [
         "Ракета", "Локи", "Джефф", "Луна Сноу",
-        "Женщина Невидимка"
+        "Женщина Невидимка", "Дэдпул"  # ДОБАВЛЕН Дэдпул в хилы
     ]
 }
 
-# УДАЛЕНЫ специальные персонажи (Адам Уорлак, Альтрон, Гамбит, Мантис, Плащ и Кинжал)
+# СИЛЬНЫЕ И СЛАБЫЕ ДПС
+STRONG_DPS = ["Соколиный Глаз", "Хела", "Человек-Факел", "Железный Человек", "Лунный Рыцарь",
+              "Нэмор", "Каратель", "Девушка-Белка", "Звёздный Лорд", "Зимний Солдат", 
+              "Росомаха", "Феникс", "Чёрная Пантера", "Сорвиголова"]
+
+WEAK_DPS = ["Шторм", "Псайлок", "Человек-Паук", "Алая Ведьма", "Мистер Фантастик", 
+            "Мэджик", "Дэдпул", "Чёрная Вдова", "Блэйд", "Эльза Бладстоун", "Циклоп"]
+
 SPECIAL_CHARACTERS = {
     'ko_farm_arcade': {
-        'support': []  # Очищено
+        'support': ["Дэдпул"]
     },
     'hybrid_farm': {
-        'support': []  # Очищено
+        'support': ["Дэдпул"]
     },
     'hybrid_arcade': {
-        'support': []  # Очищено
+        'support': ["Дэдпул"]
+    },
+    'hybrid_arcade_strong': {
+        'support': ["Дэдпул"]
     }
 }
 
-# ЗАПРЕЩЕННЫЕ ПЕРСОНАЖИ ДЛЯ ВСЕХ ФАРМОВ (все запрещенные персонажи)
+# ЗАПРЕЩЕННЫЕ ПЕРСОНАЖИ
 BANNED_CHARACTERS = {
     'farm_336': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Белая лиса", "Железный кулак", "Гамбит"],
     'farm_336_arcade': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Белая лиса", "Железный кулак", "Гамбит"],
@@ -131,7 +146,8 @@ BANNED_CHARACTERS = {
     'farm_222_arcade': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Белая лиса", "Железный кулак", "Гамбит"],
     'ko_farm_arcade': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Гамбит"],
     'hybrid_farm': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Гамбит"],
-    'hybrid_arcade': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Гамбит"]
+    'hybrid_arcade': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Гамбит"],
+    'hybrid_arcade_strong': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Гамбит"]
 }
 
 FARM_TYPES = {
@@ -212,6 +228,20 @@ FARM_TYPES = {
             'team2_support': {'limit': 2, 'emoji': '💖', 'display_name': 'Саппорты команды 2', 'team': 2},
             'team2_dps': {'limit': 2, 'emoji': '⚔️', 'display_name': 'ДПС команды 2', 'team': 2}
         }
+    },
+    'hybrid_arcade_strong': {  # НОВЫЙ ТИП ФАРМА
+        'name': 'Гибрид фарм в аркаде!',
+        'composition': '2 команды: 1 Сильный ДПС, 1 Слабый ДПС, 2 Саппорта, 2 Танка в каждой',
+        'roles': {
+            'team1_tank': {'limit': 2, 'emoji': '🛡️', 'display_name': 'Танки команды 1', 'team': 1},
+            'team1_support': {'limit': 2, 'emoji': '💖', 'display_name': 'Саппорты команды 1', 'team': 1},
+            'team1_strong_dps': {'limit': 1, 'emoji': '⭐', 'display_name': 'Сильный ДПС команды 1', 'team': 1, 'dps_type': 'strong'},
+            'team1_weak_dps': {'limit': 1, 'emoji': '🌙', 'display_name': 'Слабый ДПС команды 1', 'team': 1, 'dps_type': 'weak'},
+            'team2_tank': {'limit': 2, 'emoji': '🛡️', 'display_name': 'Танки команды 2', 'team': 2},
+            'team2_support': {'limit': 2, 'emoji': '💖', 'display_name': 'Саппорты команды 2', 'team': 2},
+            'team2_strong_dps': {'limit': 1, 'emoji': '⭐', 'display_name': 'Сильный ДПС команды 2', 'team': 2, 'dps_type': 'strong'},
+            'team2_weak_dps': {'limit': 1, 'emoji': '🌙', 'display_name': 'Слабый ДПС команды 2', 'team': 2, 'dps_type': 'weak'}
+        }
     }
 }
 
@@ -288,6 +318,26 @@ def load_ticket_counter():
 # ============================================
 # ФУНКЦИИ СОХРАНЕНИЯ/ЗАГРУЗКИ ДАННЫХ
 # ============================================
+
+def save_farm_stats():
+    try:
+        with open(FARM_STATS_FILE, 'wb') as f:
+            pickle.dump(dict(farm_stats), f)
+        logger.info("Статистика фарма сохранена")
+    except Exception as e:
+        logger.error(f"Ошибка сохранения статистики фарма: {e}")
+
+def load_farm_stats():
+    global farm_stats
+    try:
+        if os.path.exists(FARM_STATS_FILE):
+            with open(FARM_STATS_FILE, 'rb') as f:
+                data = pickle.load(f)
+                farm_stats = defaultdict(lambda: defaultdict(int), data)
+            logger.info("Статистика фарма загружена")
+    except Exception as e:
+        logger.error(f"Ошибка загрузки статистики фарма: {e}")
+        farm_stats = defaultdict(lambda: defaultdict(int))
 
 def save_warnings():
     try:
@@ -401,14 +451,6 @@ async def get_current_msk_time_from_channel():
     except Exception as e:
         logger.error(f"Ошибка получения времени из канала: {e}")
         return None
-
-def get_current_time_from_channel_sync(current_time_str):
-    """Извлекает текущее время из строки"""
-    # Ожидаемый формат: "**21:30:15**"
-    match = re.search(r'\*\*(\d{2}:\d{2}:\d{2})\*\*', current_time_str)
-    if match:
-        return match.group(1)
-    return None
 
 def get_unix_timestamp(time_str):
     msk_tz = pytz.timezone('Europe/Moscow')
@@ -734,6 +776,33 @@ async def get_audit_log_entry(guild, action, target=None, delay=2.0):
     return None
 
 # ============================================
+# ФУНКЦИИ ДЛЯ ЛОГИРОВАНИЯ ФАРМА
+# ============================================
+
+async def log_farm_action(guild, action_type, user, character, role, farm_type, farm_name):
+    """Отправляет лог о действиях с фармом в канал"""
+    channel = bot.get_channel(FARM_LOG_CHANNEL_ID)
+    if not channel:
+        logger.error(f"Канал для логов фарма не найден! ID: {FARM_LOG_CHANNEL_ID}")
+        return
+    
+    emoji = "📝" if action_type == "join" else "🚪"
+    action_text = "записался" if action_type == "join" else "вышел"
+    
+    embed = discord.Embed(
+        title=f"{emoji} {action_text.capitalize()} на фарм",
+        color=0x00ff00 if action_type == "join" else 0xff0000,
+        timestamp=datetime.now()
+    )
+    embed.add_field(name="👤 Пользователь", value=user.mention, inline=True)
+    embed.add_field(name="🎭 Персонаж", value=character, inline=True)
+    embed.add_field(name="⚔️ Роль", value=role, inline=True)
+    embed.add_field(name="📋 Тип фарма", value=farm_name, inline=False)
+    embed.add_field(name="🆔 ID пользователя", value=user.id, inline=True)
+    
+    await channel.send(embed=embed)
+
+# ============================================
 # ФУНКЦИИ ДЛЯ ФАРМА
 # ============================================
 
@@ -809,22 +878,28 @@ async def update_farm_message(message, event_data, farm_type):
 
 async def remove_user_from_farm(event_data, user_id):
     removed = False
+    removed_data = None
     for role_type in list(event_data.keys()):
         for i, entry in enumerate(event_data[role_type][:]):
             if entry['user'].id == user_id:
+                removed_data = entry
                 event_data[role_type].pop(i)
                 removed = True
                 break
-    return removed
+        if removed:
+            break
+    return removed, removed_data
 
 async def remove_specific_user_from_farm(event_data, user):
     removed = False
     removed_from = []
+    removed_data = None
     
     for role_type, role_list in event_data.items():
         for i, entry in enumerate(role_list[:]):
             if entry['user'].id == user.id:
                 character_name = entry['character']
+                removed_data = entry
                 role_list.pop(i)
                 removed = True
                 
@@ -845,7 +920,7 @@ async def remove_specific_user_from_farm(event_data, user):
                 removed_from.append(f"{role_name} ({character_name})")
                 break
     
-    return removed, removed_from
+    return removed, removed_from, removed_data
 
 # ============================================
 # КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ ФАРМОМ
@@ -932,7 +1007,16 @@ class AddFarmInThreadView(discord.ui.View):
             else:
                 role_type = 'dps'
             
-            characters = self.get_filtered_characters(role_type, self.farm_type)
+            # Для hybrid_arcade_strong выбираем тип ДПС
+            if self.farm_type == 'hybrid_arcade_strong':
+                if 'strong_dps' in role_key:
+                    characters = STRONG_DPS.copy()
+                elif 'weak_dps' in role_key:
+                    characters = WEAK_DPS.copy()
+                else:
+                    characters = self.get_filtered_characters(role_type, self.farm_type)
+            else:
+                characters = self.get_filtered_characters(role_type, self.farm_type)
             
             options = []
             for char in characters[:25]:
@@ -986,7 +1070,12 @@ class AddFarmInThreadView(discord.ui.View):
             await interaction.response.send_message(f"❌ Список уже заполнен ({max_limit}/{max_limit})", ephemeral=True)
             return
         
-        await remove_user_from_farm(event_data, self.target_member.id)
+        # Проверяем, не записан ли уже пользователь
+        for role_list in event_data.values():
+            for entry in role_list:
+                if entry['user'].id == self.target_member.id:
+                    await interaction.response.send_message(f"❌ {self.target_member.mention} уже записан на фарм!", ephemeral=True)
+                    return
         
         current_list.append({
             'user': self.target_member,
@@ -1013,6 +1102,17 @@ class AddFarmInThreadView(discord.ui.View):
             save_farm_data()
             
             logger.info(f"Создатель фарма {self.creator} добавил {self.target_member} как {role_display} ({character_name})")
+            
+            # Логируем добавление в канал
+            await log_farm_action(
+                interaction.guild,
+                'join',
+                self.target_member,
+                character_name,
+                role_display,
+                self.farm_type,
+                farm_config['name']
+            )
             
             try:
                 await self.target_member.send(f"📝 Вы были добавлены в фарм **{farm_config['name']}** на роль **{role_display}** с персонажем **{character_name}**")
@@ -1078,7 +1178,7 @@ async def remove_from_farm_command(ctx, member: discord.Member = None):
         return
     
     event_data = farm_messages[farm_message_id]['data']
-    removed, removed_from = await remove_specific_user_from_farm(event_data, member)
+    removed, removed_from, removed_data = await remove_specific_user_from_farm(event_data, member)
     
     if removed:
         try:
@@ -1095,6 +1195,20 @@ async def remove_from_farm_command(ctx, member: discord.Member = None):
             
             await ctx.send(embed=embed)
             logger.info(f"Пользователь {member} удален из записи создателем фарма {ctx.author}")
+            
+            # Логируем удаление
+            if removed_data:
+                farm_config = FARM_TYPES[farm_type]
+                role_name = removed_from[0].split('(')[0].strip() if removed_from else "неизвестно"
+                await log_farm_action(
+                    ctx.guild,
+                    'leave',
+                    member,
+                    removed_data['character'],
+                    role_name,
+                    farm_type,
+                    farm_config['name']
+                )
             
             try:
                 await member.send(f"🗑️ Вы были удалены из фарма **{FARM_TYPES[farm_type]['name']}**")
@@ -1207,6 +1321,12 @@ class AddPlayerModal(discord.ui.Modal, title="Добавление игрока 
             self.role_select.options.append(discord.SelectOption(label="ДПС Команда 2", value="team2_dps", emoji="⚔️"))
             self.role_select.options.append(discord.SelectOption(label="Танк Команда 2", value="team2_tank", emoji="🛡️"))
             self.role_select.options.append(discord.SelectOption(label="Саппорт Команда 2", value="team2_support", emoji="💖"))
+            # Для hybrid_arcade_strong добавляем сильных и слабых ДПС
+            if farm_type == 'hybrid_arcade_strong':
+                self.role_select.options.append(discord.SelectOption(label="⭐ Сильный ДПС Команда 1", value="team1_strong_dps", emoji="⭐"))
+                self.role_select.options.append(discord.SelectOption(label="🌙 Слабый ДПС Команда 1", value="team1_weak_dps", emoji="🌙"))
+                self.role_select.options.append(discord.SelectOption(label="⭐ Сильный ДПС Команда 2", value="team2_strong_dps", emoji="⭐"))
+                self.role_select.options.append(discord.SelectOption(label="🌙 Слабый ДПС Команда 2", value="team2_weak_dps", emoji="🌙"))
     
     async def on_submit(self, interaction: discord.Interaction):
         try:
@@ -1261,7 +1381,12 @@ class AddPlayerCharacterModal(discord.ui.Modal, title="Выбор персона
             await interaction.response.send_message(f"❌ Список уже заполнен ({max_limit}/{max_limit})", ephemeral=True)
             return
         
-        await remove_user_from_farm(event_data, self.member.id)
+        # Проверяем, не записан ли уже пользователь
+        for role_list in event_data.values():
+            for entry in role_list:
+                if entry['user'].id == self.member.id:
+                    await interaction.response.send_message(f"❌ {self.member.mention} уже записан на фарм!", ephemeral=True)
+                    return
         
         current_list.append({
             'user': self.member,
@@ -1273,7 +1398,19 @@ class AddPlayerCharacterModal(discord.ui.Modal, title="Выбор персона
         message = await interaction.channel.fetch_message(self.message_id)
         await update_farm_message(message, event_data, self.farm_type)
         
-        await interaction.response.send_message(f"✅ {self.member.mention} добавлен как {farm_config['roles'][self.role_key]['display_name']} на персонаже {self.character.value}", ephemeral=True)
+        role_display = farm_config['roles'][self.role_key]['display_name']
+        await interaction.response.send_message(f"✅ {self.member.mention} добавлен как {role_display} на персонаже {self.character.value}", ephemeral=True)
+        
+        # Логируем добавление
+        await log_farm_action(
+            interaction.guild,
+            'join',
+            self.member,
+            self.character.value,
+            role_display,
+            self.farm_type,
+            farm_config['name']
+        )
 
 class FarmEventCreationView(discord.ui.View):
     def __init__(self):
@@ -1330,7 +1467,8 @@ class FarmEventCreationView(discord.ui.View):
             discord.SelectOption(label="Фарм 222 в аркаде", value="farm_222_arcade", emoji="🎮"),
             discord.SelectOption(label="КО фарм в аркаде", value="ko_farm_arcade", emoji="🏆"),
             discord.SelectOption(label="Гибрид фарм", value="hybrid_farm", emoji="🔄"),
-            discord.SelectOption(label="Гибрид фарм в аркаде", value="hybrid_arcade", emoji="🔄")
+            discord.SelectOption(label="Гибрид фарм в аркаде", value="hybrid_arcade", emoji="🔄"),
+            discord.SelectOption(label="Гибрид фарм в аркаде!", value="hybrid_arcade_strong", emoji="🔥")
         ]
     )
     async def select_farm(self, interaction: discord.Interaction, select: discord.ui.Select):
@@ -1378,6 +1516,10 @@ class FarmTypeView(discord.ui.View):
     @discord.ui.button(label='🔄 Гибрид фарм в аркаде', style=discord.ButtonStyle.primary, emoji='🔄')
     async def hybrid_arcade(self, interaction: discord.Interaction, button: discord.ui.Button):
         await create_farm_list_from_button(interaction, 'hybrid_arcade')
+    
+    @discord.ui.button(label='🔥 Гибрид фарм в аркаде!', style=discord.ButtonStyle.danger, emoji='🔥')
+    async def hybrid_arcade_strong(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await create_farm_list_from_button(interaction, 'hybrid_arcade_strong')
 
 class RoleSelectionView(discord.ui.View):
     def __init__(self, message_id, farm_type):
@@ -1426,6 +1568,13 @@ class RoleSelectionView(discord.ui.View):
             await interaction.response.send_message(f"❌ {farm_config['roles'][role_key]['display_name']} список уже заполнен ({max_limit}/{max_limit})", ephemeral=True)
             return
         
+        # Проверяем, не записан ли уже пользователь
+        for role_list in event_data.values():
+            for entry in role_list:
+                if entry['user'].id == interaction.user.id:
+                    await interaction.response.send_message(f"❌ Вы уже записаны на фарм!", ephemeral=True)
+                    return
+        
         characters = self.get_filtered_characters(role_type, self.farm_type)
         view = CharacterSelectionView(self.message_id, role_key, characters, self.farm_type)
         
@@ -1459,13 +1608,37 @@ class RoleSelectionView(discord.ui.View):
             return
         
         event_data = farm_messages[self.message_id]['data']
-        removed = await remove_user_from_farm(event_data, interaction.user.id)
+        removed, removed_data = await remove_user_from_farm(event_data, interaction.user.id)
         
         if removed:
             try:
                 message = await interaction.channel.fetch_message(self.message_id)
                 await update_farm_message(message, event_data, self.farm_type)
                 await interaction.response.send_message("✅ Вы удалены из списка записи", ephemeral=True)
+                
+                # Логируем выход
+                if removed_data:
+                    farm_config = FARM_TYPES[self.farm_type]
+                    role_name = "неизвестно"
+                    for role_key, role_list in event_data.items():
+                        # Ищем роль по списку (уже после удаления)
+                        pass
+                    # Определяем роль из удаленных данных
+                    for role_key, role_list in farm_config['roles'].items():
+                        if role_key in event_data and removed_data in event_data.get(role_key, []):
+                            role_name = role_list['display_name']
+                            break
+                    
+                    await log_farm_action(
+                        interaction.guild,
+                        'leave',
+                        interaction.user,
+                        removed_data['character'],
+                        role_name,
+                        self.farm_type,
+                        farm_config['name']
+                    )
+                
             except discord.NotFound:
                 await interaction.response.send_message("❌ Сообщение фарма не найдено", ephemeral=True)
         else:
@@ -1477,30 +1650,62 @@ class TeamFarmRoleSelectionView(discord.ui.View):
         self.message_id = message_id
         self.farm_type = farm_type
         
-        self.add_item(discord.ui.Button(label='🛡️ Танк 1', style=discord.ButtonStyle.success, custom_id=f'team_tank1_{random.randint(1000,9999)}'))
-        self.add_item(discord.ui.Button(label='💖 Саппорт 1', style=discord.ButtonStyle.primary, custom_id=f'team_support1_{random.randint(1000,9999)}'))
-        self.add_item(discord.ui.Button(label='⚔️ ДПС 1', style=discord.ButtonStyle.danger, custom_id=f'team_dps1_{random.randint(1000,9999)}'))
-        self.add_item(discord.ui.Button(label='🛡️ Танк 2', style=discord.ButtonStyle.success, custom_id=f'team_tank2_{random.randint(1000,9999)}'))
-        self.add_item(discord.ui.Button(label='💖 Саппорт 2', style=discord.ButtonStyle.primary, custom_id=f'team_support2_{random.randint(1000,9999)}'))
-        self.add_item(discord.ui.Button(label='⚔️ ДПС 2', style=discord.ButtonStyle.danger, custom_id=f'team_dps2_{random.randint(1000,9999)}'))
-        self.add_item(discord.ui.Button(label='🚪 Выйти', style=discord.ButtonStyle.secondary, custom_id=f'team_leave_farm_{random.randint(1000,9999)}'))
-        
-        for item in self.children:
-            if isinstance(item, discord.ui.Button):
-                if 'Танк 1' in item.label:
-                    item.callback = self.create_callback('team1_tank')
-                elif 'Саппорт 1' in item.label:
-                    item.callback = self.create_callback('team1_support')
-                elif 'ДПС 1' in item.label:
-                    item.callback = self.create_callback('team1_dps')
-                elif 'Танк 2' in item.label:
-                    item.callback = self.create_callback('team2_tank')
-                elif 'Саппорт 2' in item.label:
-                    item.callback = self.create_callback('team2_support')
-                elif 'ДПС 2' in item.label:
-                    item.callback = self.create_callback('team2_dps')
-                elif 'Выйти' in item.label:
-                    item.callback = self.remove_from_farm
+        if farm_type == 'hybrid_arcade_strong':
+            self.add_item(discord.ui.Button(label='🛡️ Танк 1', style=discord.ButtonStyle.success, custom_id=f'team_tank1_{random.randint(1000,9999)}'))
+            self.add_item(discord.ui.Button(label='💖 Саппорт 1', style=discord.ButtonStyle.primary, custom_id=f'team_support1_{random.randint(1000,9999)}'))
+            self.add_item(discord.ui.Button(label='⭐ Сильный ДПС 1', style=discord.ButtonStyle.danger, custom_id=f'team_strong_dps1_{random.randint(1000,9999)}'))
+            self.add_item(discord.ui.Button(label='🌙 Слабый ДПС 1', style=discord.ButtonStyle.secondary, custom_id=f'team_weak_dps1_{random.randint(1000,9999)}'))
+            self.add_item(discord.ui.Button(label='🛡️ Танк 2', style=discord.ButtonStyle.success, custom_id=f'team_tank2_{random.randint(1000,9999)}'))
+            self.add_item(discord.ui.Button(label='💖 Саппорт 2', style=discord.ButtonStyle.primary, custom_id=f'team_support2_{random.randint(1000,9999)}'))
+            self.add_item(discord.ui.Button(label='⭐ Сильный ДПС 2', style=discord.ButtonStyle.danger, custom_id=f'team_strong_dps2_{random.randint(1000,9999)}'))
+            self.add_item(discord.ui.Button(label='🌙 Слабый ДПС 2', style=discord.ButtonStyle.secondary, custom_id=f'team_weak_dps2_{random.randint(1000,9999)}'))
+            self.add_item(discord.ui.Button(label='🚪 Выйти', style=discord.ButtonStyle.secondary, custom_id=f'team_leave_farm_{random.randint(1000,9999)}'))
+            
+            for item in self.children:
+                if isinstance(item, discord.ui.Button):
+                    if 'Танк 1' in item.label:
+                        item.callback = self.create_callback('team1_tank')
+                    elif 'Саппорт 1' in item.label:
+                        item.callback = self.create_callback('team1_support')
+                    elif 'Сильный ДПС 1' in item.label:
+                        item.callback = self.create_callback('team1_strong_dps')
+                    elif 'Слабый ДПС 1' in item.label:
+                        item.callback = self.create_callback('team1_weak_dps')
+                    elif 'Танк 2' in item.label:
+                        item.callback = self.create_callback('team2_tank')
+                    elif 'Саппорт 2' in item.label:
+                        item.callback = self.create_callback('team2_support')
+                    elif 'Сильный ДПС 2' in item.label:
+                        item.callback = self.create_callback('team2_strong_dps')
+                    elif 'Слабый ДПС 2' in item.label:
+                        item.callback = self.create_callback('team2_weak_dps')
+                    elif 'Выйти' in item.label:
+                        item.callback = self.remove_from_farm
+        else:
+            self.add_item(discord.ui.Button(label='🛡️ Танк 1', style=discord.ButtonStyle.success, custom_id=f'team_tank1_{random.randint(1000,9999)}'))
+            self.add_item(discord.ui.Button(label='💖 Саппорт 1', style=discord.ButtonStyle.primary, custom_id=f'team_support1_{random.randint(1000,9999)}'))
+            self.add_item(discord.ui.Button(label='⚔️ ДПС 1', style=discord.ButtonStyle.danger, custom_id=f'team_dps1_{random.randint(1000,9999)}'))
+            self.add_item(discord.ui.Button(label='🛡️ Танк 2', style=discord.ButtonStyle.success, custom_id=f'team_tank2_{random.randint(1000,9999)}'))
+            self.add_item(discord.ui.Button(label='💖 Саппорт 2', style=discord.ButtonStyle.primary, custom_id=f'team_support2_{random.randint(1000,9999)}'))
+            self.add_item(discord.ui.Button(label='⚔️ ДПС 2', style=discord.ButtonStyle.danger, custom_id=f'team_dps2_{random.randint(1000,9999)}'))
+            self.add_item(discord.ui.Button(label='🚪 Выйти', style=discord.ButtonStyle.secondary, custom_id=f'team_leave_farm_{random.randint(1000,9999)}'))
+            
+            for item in self.children:
+                if isinstance(item, discord.ui.Button):
+                    if 'Танк 1' in item.label:
+                        item.callback = self.create_callback('team1_tank')
+                    elif 'Саппорт 1' in item.label:
+                        item.callback = self.create_callback('team1_support')
+                    elif 'ДПС 1' in item.label:
+                        item.callback = self.create_callback('team1_dps')
+                    elif 'Танк 2' in item.label:
+                        item.callback = self.create_callback('team2_tank')
+                    elif 'Саппорт 2' in item.label:
+                        item.callback = self.create_callback('team2_support')
+                    elif 'ДПС 2' in item.label:
+                        item.callback = self.create_callback('team2_dps')
+                    elif 'Выйти' in item.label:
+                        item.callback = self.remove_from_farm
     
     def create_callback(self, role_key):
         async def callback(interaction: discord.Interaction):
@@ -1522,6 +1727,13 @@ class TeamFarmRoleSelectionView(discord.ui.View):
             await interaction.response.send_message(f"❌ {farm_config['roles'][role_key]['display_name']} список уже заполнен ({max_limit}/{max_limit})", ephemeral=True)
             return
         
+        # Проверяем, не записан ли уже пользователь
+        for role_list in event_data.values():
+            for entry in role_list:
+                if entry['user'].id == interaction.user.id:
+                    await interaction.response.send_message(f"❌ Вы уже записаны на фарм!", ephemeral=True)
+                    return
+        
         if 'tank' in role_key:
             role_type = 'tank'
         elif 'support' in role_key:
@@ -1529,7 +1741,17 @@ class TeamFarmRoleSelectionView(discord.ui.View):
         else:
             role_type = 'dps'
         
-        characters = self.get_filtered_characters(role_type, self.farm_type)
+        # Для hybrid_arcade_strong выбираем правильный список ДПС
+        if self.farm_type == 'hybrid_arcade_strong':
+            if 'strong_dps' in role_key:
+                characters = STRONG_DPS.copy()
+            elif 'weak_dps' in role_key:
+                characters = WEAK_DPS.copy()
+            else:
+                characters = self.get_filtered_characters(role_type, self.farm_type)
+        else:
+            characters = self.get_filtered_characters(role_type, self.farm_type)
+        
         view = CharacterSelectionView(self.message_id, role_key, characters, self.farm_type)
         
         embed = discord.Embed(
@@ -1562,13 +1784,35 @@ class TeamFarmRoleSelectionView(discord.ui.View):
             return
         
         event_data = farm_messages[self.message_id]['data']
-        removed = await remove_user_from_farm(event_data, interaction.user.id)
+        removed, removed_data = await remove_user_from_farm(event_data, interaction.user.id)
         
         if removed:
             try:
                 message = await interaction.channel.fetch_message(self.message_id)
                 await update_farm_message(message, event_data, self.farm_type)
                 await interaction.response.send_message("✅ Вы удалены из списка записи", ephemeral=True)
+                
+                # Логируем выход
+                if removed_data:
+                    farm_config = FARM_TYPES[self.farm_type]
+                    role_name = "неизвестно"
+                    for role_key, role_config in farm_config['roles'].items():
+                        if role_key in event_data:
+                            for entry in event_data[role_key]:
+                                if entry['user'].id == interaction.user.id and entry['character'] == removed_data['character']:
+                                    role_name = role_config['display_name']
+                                    break
+                    
+                    await log_farm_action(
+                        interaction.guild,
+                        'leave',
+                        interaction.user,
+                        removed_data['character'],
+                        role_name,
+                        self.farm_type,
+                        farm_config['name']
+                    )
+                
             except discord.NotFound:
                 await interaction.response.send_message("❌ Сообщение фарма не найдено", ephemeral=True)
         else:
@@ -1611,7 +1855,12 @@ class CharacterSelectionView(discord.ui.View):
             await interaction.response.send_message(f"❌ Список уже заполнен ({max_limit}/{max_limit})", ephemeral=True)
             return
         
-        await remove_user_from_farm(event_data, interaction.user.id)
+        # Проверяем, не записан ли уже пользователь
+        for role_list in event_data.values():
+            for entry in role_list:
+                if entry['user'].id == interaction.user.id:
+                    await interaction.response.send_message(f"❌ Вы уже записаны на фарм!", ephemeral=True)
+                    return
         
         current_list.append({
             'user': interaction.user,
@@ -1628,6 +1877,17 @@ class CharacterSelectionView(discord.ui.View):
             save_farm_data()
             
             logger.info(f"Пользователь {interaction.user} записался как {role_display} ({character_name})")
+            
+            # Логируем запись
+            await log_farm_action(
+                interaction.guild,
+                'join',
+                interaction.user,
+                character_name,
+                role_display,
+                self.farm_type,
+                farm_config['name']
+            )
             
         except discord.NotFound:
             await interaction.response.send_message("❌ Сообщение фарма не найдено", ephemeral=True)
@@ -1749,10 +2009,16 @@ async def ping_event_participants(guild, thread, message_id, farm_type, delay, t
         farm_config = FARM_TYPES[farm_type]
         
         all_participants = []
-        for role_list in event_data.values():
+        participants_info = []
+        for role_key, role_list in event_data.items():
             for entry in role_list:
                 if entry['user'] not in all_participants:
                     all_participants.append(entry['user'])
+                    participants_info.append({
+                        'user': entry['user'],
+                        'character': entry['character'],
+                        'role': farm_config['roles'].get(role_key, {}).get('display_name', role_key)
+                    })
         
         # Получаем текущее время МСК из канала
         current_msk_time = await get_current_msk_time_from_channel()
@@ -1774,6 +2040,13 @@ async def ping_event_participants(guild, thread, message_id, farm_type, delay, t
             
             await thread.send(message_content)
             logger.info(f"Участники фарма {farm_type} упомянуты в треде {thread.id}")
+            
+            # Сохраняем статистику фарма для каждого участника
+            for info in participants_info:
+                farm_stats[info['user'].id][info['character']] += 1
+            
+            save_farm_stats()
+            logger.info(f"Статистика фарма сохранена для {len(participants_info)} участников")
         else:
             await thread.send("❌ Фарм отменен, так как никто не записался 😢")
             
@@ -1879,10 +2152,136 @@ async def farm_command(ctx):
         inline=False
     )
     
+    embed.add_field(
+        name="🔥 Гибрид фарм в аркаде!",
+        value="2 команды: 1 Сильный ДПС, 1 Слабый ДПС, 2 Саппорта, 2 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Плащ и Кинжал, Гамбит\n**⭐ Сильные ДПС:** Соколиный Глаз, Хела, Человек-Факел, Железный Человек, Лунный Рыцарь, Нэмор, Каратель, Девушка-Белка, Звёздный Лорд, Зимний Солдат, Росомаха, Феникс, Чёрная Пантера, Сорвиголова\n**🌙 Слабые ДПС:** Шторм, Псайлок, Человек-Паук, Алая Ведьма, Мистер Фантастик, Мэджик, Дэдпул, Чёрная Вдова, Блэйд, Эльза Бладстоун, Циклоп",
+        inline=False
+    )
+    
     embed.set_footer(text="Нажмите на кнопку ниже чтобы создать лист записи")
     
     view = FarmTypeView()
     await ctx.send(embed=embed, view=view)
+
+# ============================================
+# СТАТИСТИКА ФАРМА
+# ============================================
+
+@bot.command(name='farmstats')
+async def farm_stats_command(ctx, member: discord.Member = None):
+    """Показать статистику фарма пользователя"""
+    if not is_moderator(ctx):
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="У вас нет прав для использования этой команды! Только модераторы могут смотреть статистику фарма.",
+            color=0xff0000
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    if member is None:
+        member = ctx.author
+    
+    if member.id not in farm_stats or not farm_stats[member.id]:
+        embed = discord.Embed(
+            title=f"📊 Статистика фарма {member}",
+            description="**Нет данных о фарме**",
+            color=0x7289da
+        )
+        embed.add_field(
+            name="ℹ️ Информация",
+            value="У этого пользователя пока нет завершенных фармов.",
+            inline=False
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    stats = farm_stats[member.id]
+    total_farms = sum(stats.values())
+    
+    embed = discord.Embed(
+        title=f"📊 Статистика фарма {member}",
+        color=0x00ff00,
+        timestamp=datetime.now()
+    )
+    
+    embed.add_field(name="📈 Всего фармов", value=str(total_farms), inline=True)
+    
+    # Сортируем по количеству
+    sorted_stats = sorted(stats.items(), key=lambda x: x[1], reverse=True)
+    
+    stats_text = ""
+    for char, count in sorted_stats[:20]:
+        stats_text += f"• **{char}:** {count} раз\n"
+    
+    if stats_text:
+        embed.add_field(name="🎭 По персонажам", value=stats_text, inline=False)
+    else:
+        embed.add_field(name="🎭 По персонажам", value="Нет данных", inline=False)
+    
+    embed.set_footer(text=f"ID: {member.id}")
+    await ctx.send(embed=embed)
+
+@bot.command(name='farmtop')
+async def farm_top_command(ctx, limit: int = 10):
+    """Показать топ пользователей по фарму"""
+    if not is_moderator(ctx):
+        embed = discord.Embed(
+            title="❌ Ошибка",
+            description="У вас нет прав для использования этой команды! Только модераторы могут смотреть топ фарма.",
+            color=0xff0000
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    if limit > 20:
+        limit = 20
+    
+    # Собираем статистику по пользователям
+    user_totals = {}
+    for user_id, stats in farm_stats.items():
+        total = sum(stats.values())
+        if total > 0:
+            user_totals[user_id] = total
+    
+    if not user_totals:
+        embed = discord.Embed(
+            title="🏆 Топ фармеров",
+            description="**Нет данных о фарме**",
+            color=0x7289da
+        )
+        embed.add_field(
+            name="ℹ️ Информация",
+            value="Пока никто не фармил на сервере.",
+            inline=False
+        )
+        await ctx.send(embed=embed)
+        return
+    
+    # Сортируем по количеству
+    sorted_users = sorted(user_totals.items(), key=lambda x: x[1], reverse=True)[:limit]
+    
+    embed = discord.Embed(
+        title="🏆 Топ фармеров",
+        description=f"Топ {len(sorted_users)} пользователей по количеству завершенных фармов",
+        color=0xff9900,
+        timestamp=datetime.now()
+    )
+    
+    medals = ["🥇", "🥈", "🥉"]
+    
+    for i, (user_id, count) in enumerate(sorted_users):
+        member = ctx.guild.get_member(user_id)
+        if member:
+            medal = medals[i] if i < 3 else f"#{i+1}"
+            embed.add_field(
+                name=f"{medal} {member.display_name}",
+                value=f"**Фармов:** {count}",
+                inline=False
+            )
+    
+    embed.set_footer(text="Статистика обновляется после каждого завершенного фарма")
+    await ctx.send(embed=embed)
 
 # ============================================
 # КОМАНДА ВЕРИФИКАЦИИ (ИСПРАВЛЕНА)
@@ -1918,6 +2317,8 @@ async def verify_command(ctx):
         color=0xff9900
     )
     embed.add_field(name="IGN", value=ticket_data.get('ign', 'Не указан'), inline=True)
+    embed.add_field(name="Возраст", value=ticket_data.get('age', 'Не указан'), inline=True)
+    embed.add_field(name="Обращение", value=ticket_data.get('pronoun', 'Не указано'), inline=True)
     
     await ctx.send(embed=embed, view=view)
 
@@ -1970,6 +2371,8 @@ class VerifyConfirmView(discord.ui.View):
             color=0x00ff00
         )
         embed.add_field(name="IGN", value=ign, inline=True)
+        embed.add_field(name="Возраст", value=ticket_data.get('age', 'Не указан'), inline=True)
+        embed.add_field(name="Обращение", value=ticket_data.get('pronoun', 'Не указано'), inline=True)
         embed.add_field(name="Верифицировал", value=interaction.user.mention, inline=True)
         await channel.send(embed=embed)
         
@@ -2010,6 +2413,7 @@ async def on_ready():
     load_members()
     load_ticket_counter()
     load_warnings()
+    load_farm_stats()
     
     for guild in bot.guilds:
         for member in guild.members:
@@ -2049,6 +2453,12 @@ async def on_ready():
             logger.error(f"❌ Не могу отправить сообщение в канал: {e}")
     else:
         logger.error(f"❌ КАНАЛ ДЛЯ ПЕРЕСЫЛКИ ЛС НЕ НАЙДЕН! ID: {DM_FORWARD_CHANNEL_ID}")
+    
+    farm_log_channel = bot.get_channel(FARM_LOG_CHANNEL_ID)
+    if farm_log_channel:
+        logger.info(f"✅ Канал для логов фарма найден: {farm_log_channel.name} (ID: {FARM_LOG_CHANNEL_ID})")
+    else:
+        logger.error(f"❌ КАНАЛ ДЛЯ ЛОГОВ ФАРМА НЕ НАЙДЕН! ID: {FARM_LOG_CHANNEL_ID}")
 
 async def restore_active_warnings():
     if not bot.guilds:
@@ -2132,8 +2542,10 @@ async def send_verification_message():
         name="📝 Что нужно сделать?",
         value="1. Нажмите кнопку **«Создать тикет на верификацию»**\n"
               "2. Укажите ваш IGN (никнейм) в игре Marvel Rivals\n"
-              "3. Ответьте на вопросы модератора\n"
-              "4. После проверки вы получите доступ к серверу",
+              "3. Укажите ваш возраст\n"
+              "4. Как к вам обращаться?\n"
+              "5. Ответьте на вопросы модератора\n"
+              "6. После проверки вы получите доступ к серверу",
         inline=False
     )
     embed.set_footer(text="Ваши данные будут видны только модераторам")
@@ -2201,6 +2613,8 @@ class VerificationStartView(discord.ui.View):
         active_tickets[ticket_channel.id] = {
             'user_id': interaction.user.id,
             'ign': None,
+            'age': None,
+            'pronoun': None,
             'step': 'ign'
         }
         
@@ -2270,7 +2684,7 @@ class IGNModal(discord.ui.Modal, title="Ввод IGN"):
         
         if self.ticket_channel_id in active_tickets:
             active_tickets[self.ticket_channel_id]['ign'] = self.ign.value
-            active_tickets[self.ticket_channel_id]['step'] = 'answers'
+            active_tickets[self.ticket_channel_id]['step'] = 'age'
         
         try:
             await interaction.user.edit(nick=self.ign.value)
@@ -2285,10 +2699,9 @@ class IGNModal(discord.ui.Modal, title="Ввод IGN"):
         )
         embed.add_field(
             name="❓ Вопросы от модераторов",
-            value="Пожалуйста, расскажите немного о себе:\n\n"
-                  "1. **У вас был опыт Лорд Фарминга?**\n"
-                  "2. **Какой у вас опыт игры в Marvel Rivals?**\n"
-                  "3. **Чем вы занимаетесь в свободное время?**\n\n"
+            value="Пожалуйста, ответьте на следующие вопросы:\n\n"
+                  "1. **Сколько вам лет?**\n"
+                  "2. **Как к вам обращаться? (Он/Она или имя)**\n\n"
                   "Напишите ответы на эти вопросы в этом канале.\n"
                   "Модераторы свяжутся с вами в ближайшее время.",
             inline=False
@@ -2297,277 +2710,6 @@ class IGNModal(discord.ui.Modal, title="Ввод IGN"):
         await channel.send(embed=embed)
         await interaction.response.send_message("✅ IGN сохранен! Ответьте на вопросы в канале.", ephemeral=True)
         await channel.edit(view=None)
-
-async def send_initial_messages():
-    channel = bot.get_channel(CHANNEL_ID)
-    if channel is None:
-        logger.error(f"Канал с ID {CHANNEL_ID} не найден!")
-        return
-    
-    async for message in channel.history(limit=100):
-        if message.author == bot.user:
-            await message.delete()
-    
-    for region, timezone in TIMEZONES.items():
-        embed = create_time_embed(region, timezone)
-        message = await channel.send(embed=embed)
-        message_ids[region] = message.id
-        logger.info(f"Отправлено сообщение для {region}")
-    
-    logger.info("Все сообщения с временем успешно отправлены!")
-
-@tasks.loop(minutes=5)
-async def update_time():
-    logger.info("Обновление времени...")
-    
-    channel = bot.get_channel(CHANNEL_ID)
-    if channel is None:
-        logger.error("Канал не найден!")
-        return
-    
-    for region, timezone in TIMEZONES.items():
-        message_id = message_ids.get(region)
-        if message_id:
-            try:
-                message = await channel.fetch_message(message_id)
-                embed = create_time_embed(region, timezone)
-                await message.edit(embed=embed)
-                logger.info(f"Обновлено время для {region}")
-                
-            except discord.NotFound:
-                logger.warning(f"Сообщение для {region} не найдено, отправляем новое...")
-                embed = create_time_embed(region, timezone)
-                message = await channel.send(embed=embed)
-                message_ids[region] = message.id
-                
-            except Exception as e:
-                logger.error(f"Ошибка при обновлении времени для {region}: {e}")
-
-@tasks.loop(minutes=1)
-async def update_stats():
-    if bot.guilds:
-        guild = bot.guilds[0]
-        await update_stats_channels(guild)
-        logger.debug("Статистика сервера обновлена")
-
-@bot.event
-async def on_member_join(member):
-    user_stats[member.id]['join_date'] = datetime.now()
-    user_stats[member.id]['last_activity'] = datetime.now()
-    
-    old_members[str(member.id)] = {
-        'name': member.name,
-        'display_name': member.display_name,
-        'joined_at': member.joined_at.isoformat() if member.joined_at else None,
-        'created_at': member.created_at.isoformat(),
-        'avatar_url': str(member.avatar.url) if member.avatar else None
-    }
-    save_members()
-    
-    verify_role = member.guild.get_role(VERIFY_ROLE_ID)
-    if verify_role:
-        try:
-            await member.add_roles(verify_role)
-            logger.info(f"Выдана роль неверифицированного пользователю {member}")
-        except Exception as e:
-            logger.error(f"Ошибка выдачи роли неверифицированного: {e}")
-    
-    if should_log_user(member):
-        add_user_action(
-            member.id,
-            'join',
-            f"Присоединился к серверу",
-            target=None,
-            channel=None
-        )
-        
-        log_message = (
-            f"🟢 **Пользователь присоединился**\n"
-            f"**Пользователь:** {member.mention} ({member.name}#{member.discriminator}) (ID: {member.id})\n"
-            f"**Аккаунт создан:** {member.created_at.strftime('%d.%m.%Y %H:%M:%S')}\n"
-            f"**Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
-        )
-        await send_log(member.guild, log_message)
-        
-        await send_important_notification(
-            PROTECTED_USER_ID,
-            f"🟢 **Новый участник на сервере!**\n"
-            f"**Пользователь:** {member.mention} ({member.name}#{member.discriminator})\n"
-            f"**ID:** {member.id}\n"
-            f"**Аккаунт создан:** {member.created_at.strftime('%d.%m.%Y %H:%M:%S')}"
-        )
-    
-    await asyncio.sleep(10)
-    if bot.guilds:
-        guild = bot.guilds[0]
-        await update_stats_channels(guild)
-        logger.info(f"Новый участник {member}, статистика обновлена")
-
-@bot.event
-async def on_member_remove(member):
-    if should_log_user(member):
-        add_user_action(
-            member.id,
-            'leave',
-            f"Покинул сервер",
-            target=None,
-            channel=None
-        )
-        
-        log_message = (
-            f"🔴 **Пользователь вышел**\n"
-            f"**Пользователь:** {member.mention} ({member.name}#{member.discriminator}) (ID: {member.id})\n"
-            f"**Присоединился:** {member.joined_at.strftime('%d.%m.%Y %H:%M:%S') if member.joined_at else 'Неизвестно'}\n"
-            f"**Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
-        )
-        await send_log(member.guild, log_message)
-        
-        await send_important_notification(
-            PROTECTED_USER_ID,
-            f"🔴 **Пользователь покинул сервер!**\n"
-            f"**Пользователь:** {member.mention} ({member.name}#{member.discriminator})\n"
-            f"**ID:** {member.id}\n"
-            f"**Был на сервере с:** {member.joined_at.strftime('%d.%m.%Y %H:%M:%S') if member.joined_at else 'Неизвестно'}"
-        )
-    
-    await asyncio.sleep(10)
-    if bot.guilds:
-        guild = bot.guilds[0]
-        await update_stats_channels(guild)
-        logger.info(f"Участник {member} вышел, статистика обновлена")
-
-@bot.event
-async def on_member_update(before, after):
-    if not should_log_user(before):
-        return
-    
-    if before.display_name != after.display_name:
-        add_user_action(
-            before.id,
-            'nickname_change',
-            f"Сменил ник с '{before.display_name}' на '{after.display_name}'",
-            target=None,
-            channel=None
-        )
-        
-        if str(before.id) in old_members:
-            old_members[str(before.id)]['display_name'] = after.display_name
-            save_members()
-        
-        issuer = None
-        audit_entry = await get_audit_log_entry(before.guild, discord.AuditLogAction.member_update, target=before)
-        if audit_entry and audit_entry.user:
-            issuer = audit_entry.user
-        
-        issuer_text = f" (ID: {issuer.id})" if issuer else " (Неизвестно)"
-        log_message = (
-            f"👤 **Изменен никнейм**\n"
-            f"**Пользователь:** {after.mention} ({before.name}#{before.discriminator}) (ID: {before.id})\n"
-            f"**Было:** {before.display_name}\n"
-            f"**Стало:** {after.display_name}\n"
-            f"**Кто изменил:** {issuer.mention if issuer else 'Неизвестно'}{issuer_text}\n"
-            f"**Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
-        )
-        await send_log(before.guild, log_message)
-    
-    if before.roles != after.roles:
-        added_roles = [role for role in after.roles if role not in before.roles]
-        removed_roles = [role for role in before.roles if role not in after.roles]
-        
-        if added_roles:
-            role_names = ", ".join([role.name for role in added_roles])
-            add_user_action(
-                before.id,
-                'role_added',
-                f"Получил роли: {role_names}",
-                target=None,
-                channel=None
-            )
-            
-            issuer = None
-            audit_entry = await get_audit_log_entry(before.guild, discord.AuditLogAction.member_role_update, target=before)
-            if audit_entry and audit_entry.user:
-                issuer = audit_entry.user
-            
-            issuer_text = f" (ID: {issuer.id})" if issuer else " (Неизвестно)"
-            log_message = (
-                f"➕ **Выданы роли**\n"
-                f"**Пользователь:** {after.mention} ({after.name}#{after.discriminator}) (ID: {after.id})\n"
-                f"**Роли:** {role_names}\n"
-                f"**Кто выдал:** {issuer.mention if issuer else 'Неизвестно'}{issuer_text}\n"
-                f"**Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
-            )
-            await send_log(after.guild, log_message)
-        
-        if removed_roles:
-            role_names = ", ".join([role.name for role in removed_roles])
-            add_user_action(
-                before.id,
-                'role_removed',
-                f"Лишен ролей: {role_names}",
-                target=None,
-                channel=None
-            )
-            
-            issuer = None
-            audit_entry = await get_audit_log_entry(before.guild, discord.AuditLogAction.member_role_update, target=before)
-            if audit_entry and audit_entry.user:
-                issuer = audit_entry.user
-            
-            issuer_text = f" (ID: {issuer.id})" if issuer else " (Неизвестно)"
-            log_message = (
-                f"➖ **Сняты роли**\n"
-                f"**Пользователь:** {after.mention} ({after.name}#{after.discriminator}) (ID: {after.id})\n"
-                f"**Роли:** {role_names}\n"
-                f"**Кто снял:** {issuer.mention if issuer else 'Неизвестно'}{issuer_text}\n"
-                f"**Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
-            )
-            await send_log(after.guild, log_message)
-
-@bot.event
-async def on_user_update(before, after):
-    if before.bot or before.id == NO_LOG_USER_ID:
-        return
-    
-    if before.name != after.name or before.discriminator != after.discriminator:
-        add_user_action(
-            before.id,
-            'username_change',
-            f"Сменил имя с '{before.name}#{before.discriminator}' на '{after.name}#{after.discriminator}'",
-            target=None,
-            channel=None
-        )
-        
-        if str(before.id) in old_members:
-            old_members[str(before.id)]['name'] = after.name
-            save_members()
-        
-        log_message = (
-            f"👤 **Изменено имя пользователя**\n"
-            f"**Пользователь:** <@{after.id}> ({after.name}#{after.discriminator})\n"
-            f"**Было:** {before.name}#{before.discriminator}\n"
-            f"**Стало:** {after.name}#{after.discriminator}\n"
-            f"**Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
-        )
-        for guild in bot.guilds:
-            if guild.get_member(after.id):
-                await send_log(guild, log_message)
-                break
-
-@bot.event
-async def on_voice_state_update(member, before, after):
-    if member.id == PROTECTED_USER_ID:
-        await protect_user_actions(member)
-        return
-
-@bot.event
-async def on_presence_update(before, after):
-    if before.status != after.status:
-        await asyncio.sleep(5)
-        if bot.guilds:
-            guild = bot.guilds[0]
-            await update_stats_channels(guild)
-            logger.debug("Статистика обновлена из-за изменения статуса")
 
 # ============================================
 # ПЕРЕСЫЛКА ЛС В КАНАЛ (ИСПРАВЛЕНА)
@@ -2594,7 +2736,7 @@ async def on_message(message):
     if user_stats[user_id]['join_date'] is None:
         user_stats[user_id]['join_date'] = message.author.joined_at or datetime.now()
     
-    # Пересылка ЛС в канал DM_FORWARD_CHANNEL_ID (ИСПРАВЛЕНО)
+    # Пересылка ЛС в канал DM_FORWARD_CHANNEL_ID
     if isinstance(message.channel, discord.DMChannel) and message.author.id != bot.user.id:
         logger.info(f"📬 Получено ЛС от {message.author} (ID: {message.author.id}): {message.content[:50] if message.content else 'вложения'}")
         
@@ -3191,7 +3333,9 @@ async def help_command(ctx, category: str = None):
             ("!deafen @пользователь [время]", "Отключить наушники пользователю в голосовом канале"),
             ("!undeafen @пользователь", "Включить наушники пользователю в голосовом канале"),
             ("!mass_mute [комната]", "Заглушить всех в голосовой комнате (кроме защищенного)"),
-            ("!mass_unmute [комната]", "Разглушить всех в голосовой комнате")
+            ("!mass_unmute [комната]", "Разглушить всех в голосовой комнате"),
+            ("!farmstats [@пользователь]", "Показать статистику фарма пользователя"),
+            ("!farmtop [количество]", "Показать топ фармеров")
         ]
         
         for cmd, desc in commands_list:
@@ -3213,6 +3357,8 @@ async def help_command(ctx, category: str = None):
             ("!removefarm @пользователь", "Удалить игрока из фарма в текущем треде (создатели фарма)"),
             ("!remove_from_farm @участник", "Удалить участника из списка записи"),
             ("!clearfarm", "Очистить список записи на фарм"),
+            ("!farmstats [@пользователь]", "Показать статистику фарма пользователя"),
+            ("!farmtop [количество]", "Показать топ фармеров"),
             ("ℹ️ О фарме", "Система автоматически упоминает участников в назначенное время")
         ]
         
@@ -3227,7 +3373,8 @@ async def help_command(ctx, category: str = None):
                   "• **Фарм 222 в аркаде:** 2 команды по 2 ДПС, 2 Саппорта, 2 Танка\n"
                   "• **КО фарм в аркаде:** 2 команды по 2 ДПС, 2 Саппорта, 2 Танка\n"
                   "• **Гибрид фарм:** 2 команды по 2 ДПС, 2 Саппорта, 2 Танка\n"
-                  "• **Гибрид фарм в аркаде:** 2 команды по 2 ДПС, 2 Саппорта, 2 Танка",
+                  "• **Гибрид фарм в аркаде:** 2 команды по 2 ДПС, 2 Саппорта, 2 Танка\n"
+                  "• **Гибрид фарм в аркаде!:** 2 команды по 1 Сильному ДПС, 1 Слабому ДПС, 2 Саппорта, 2 Танка",
             inline=False
         )
         
@@ -3621,7 +3768,7 @@ async def remove_specific_user(ctx, member: discord.Member, message_id: int = No
         event_data = farm_messages[message_id]['data']
         farm_type = farm_messages[message_id]['type']
         
-        removed, removed_from = await remove_specific_user_from_farm(event_data, member)
+        removed, removed_from, removed_data = await remove_specific_user_from_farm(event_data, member)
         
         if removed:
             message = await ctx.channel.fetch_message(message_id)
@@ -3637,6 +3784,20 @@ async def remove_specific_user(ctx, member: discord.Member, message_id: int = No
             
             await ctx.send(embed=embed)
             logger.info(f"Пользователь {member} удален из записи модератором {ctx.author}")
+            
+            # Логируем удаление
+            if removed_data:
+                farm_config = FARM_TYPES[farm_type]
+                role_name = removed_from[0].split('(')[0].strip() if removed_from else "неизвестно"
+                await log_farm_action(
+                    ctx.guild,
+                    'leave',
+                    member,
+                    removed_data['character'],
+                    role_name,
+                    farm_type,
+                    farm_config['name']
+                )
             
             if should_log_user(ctx.author):
                 add_user_action(
@@ -3674,6 +3835,7 @@ async def shutdown_bot(ctx, *, arg: str = None):
     save_farm_data()
     save_members()
     save_warnings()
+    save_farm_stats()
     
     if update_time.is_running():
         update_time.stop()
@@ -4261,6 +4423,21 @@ async def show_user_stats(ctx, member: discord.Member = None):
         embed.add_field(
             name="✅ Предупреждения",
             value="Активных предупреждений нет",
+            inline=True
+        )
+    
+    # Добавляем статистику фарма
+    if member.id in farm_stats and farm_stats[member.id]:
+        total_farms = sum(farm_stats[member.id].values())
+        embed.add_field(
+            name="🎯 Фарм",
+            value=f"**Всего фармов:** {total_farms}\n**Персонажей:** {len(farm_stats[member.id])}",
+            inline=True
+        )
+    else:
+        embed.add_field(
+            name="🎯 Фарм",
+            value="Нет данных",
             inline=True
         )
     
@@ -5322,7 +5499,8 @@ async def create_farm_event_command(ctx):
               "• **Фарм 222 в аркаде** - 2 команды по 2 ДПС, 2 Саппорта, 2 Танка\n"
               "• **КО фарм в аркаде** - 2 команды по 2 ДПС, 2 Саппорта, 2 Танка\n"
               "• **Гибрид фарм** - 2 команды по 2 ДПС, 2 Саппорта, 2 Танка\n"
-              "• **Гибрид фарм в аркаде** - 2 команды по 2 ДПС, 2 Саппорта, 2 Танка",
+              "• **Гибрид фарм в аркаде** - 2 команды по 2 ДПС, 2 Саппорта, 2 Танка\n"
+              "• **Гибрид фарм в аркаде!** - 2 команды по 1 Сильному ДПС, 1 Слабому ДПС, 2 Саппорта, 2 Танка",
         inline=False
     )
     
@@ -5388,6 +5566,8 @@ async def mod_help(ctx):
         ("!undeafen @пользователь", "Включить наушники"),
         ("!mass_mute [комната]", "Заглушить всех в голосовой комнате (кроме защищенного)"),
         ("!mass_unmute [комната]", "Разглушить всех в голосовой комнате"),
+        ("!farmstats [@пользователь]", "Показать статистику фарма пользователя"),
+        ("!farmtop [количество]", "Показать топ фармеров"),
         ("!modhelp", "Показать эту справку")
     ]
     
@@ -5442,6 +5622,144 @@ async def on_command_error(ctx, error):
         embed.set_image(url=ERROR_IMAGE_URL)
         await ctx.send(embed=embed)
     logger.error(f"Ошибка команды: {error}")
+
+async def send_initial_messages():
+    channel = bot.get_channel(CHANNEL_ID)
+    if channel is None:
+        logger.error(f"Канал с ID {CHANNEL_ID} не найден!")
+        return
+    
+    async for message in channel.history(limit=100):
+        if message.author == bot.user:
+            await message.delete()
+    
+    for region, timezone in TIMEZONES.items():
+        embed = create_time_embed(region, timezone)
+        message = await channel.send(embed=embed)
+        message_ids[region] = message.id
+        logger.info(f"Отправлено сообщение для {region}")
+    
+    logger.info("Все сообщения с временем успешно отправлены!")
+
+@tasks.loop(minutes=5)
+async def update_time():
+    logger.info("Обновление времени...")
+    
+    channel = bot.get_channel(CHANNEL_ID)
+    if channel is None:
+        logger.error("Канал не найден!")
+        return
+    
+    for region, timezone in TIMEZONES.items():
+        message_id = message_ids.get(region)
+        if message_id:
+            try:
+                message = await channel.fetch_message(message_id)
+                embed = create_time_embed(region, timezone)
+                await message.edit(embed=embed)
+                logger.info(f"Обновлено время для {region}")
+                
+            except discord.NotFound:
+                logger.warning(f"Сообщение для {region} не найдено, отправляем новое...")
+                embed = create_time_embed(region, timezone)
+                message = await channel.send(embed=embed)
+                message_ids[region] = message.id
+                
+            except Exception as e:
+                logger.error(f"Ошибка при обновлении времени для {region}: {e}")
+
+@tasks.loop(minutes=1)
+async def update_stats():
+    if bot.guilds:
+        guild = bot.guilds[0]
+        await update_stats_channels(guild)
+        logger.debug("Статистика сервера обновлена")
+
+@bot.event
+async def on_member_join(member):
+    user_stats[member.id]['join_date'] = datetime.now()
+    user_stats[member.id]['last_activity'] = datetime.now()
+    
+    old_members[str(member.id)] = {
+        'name': member.name,
+        'display_name': member.display_name,
+        'joined_at': member.joined_at.isoformat() if member.joined_at else None,
+        'created_at': member.created_at.isoformat(),
+        'avatar_url': str(member.avatar.url) if member.avatar else None
+    }
+    save_members()
+    
+    verify_role = member.guild.get_role(VERIFY_ROLE_ID)
+    if verify_role:
+        try:
+            await member.add_roles(verify_role)
+            logger.info(f"Выдана роль неверифицированного пользователю {member}")
+        except Exception as e:
+            logger.error(f"Ошибка выдачи роли неверифицированного: {e}")
+    
+    if should_log_user(member):
+        add_user_action(
+            member.id,
+            'join',
+            f"Присоединился к серверу",
+            target=None,
+            channel=None
+        )
+        
+        log_message = (
+            f"🟢 **Пользователь присоединился**\n"
+            f"**Пользователь:** {member.mention} ({member.name}#{member.discriminator}) (ID: {member.id})\n"
+            f"**Аккаунт создан:** {member.created_at.strftime('%d.%m.%Y %H:%M:%S')}\n"
+            f"**Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+        )
+        await send_log(member.guild, log_message)
+        
+        await send_important_notification(
+            PROTECTED_USER_ID,
+            f"🟢 **Новый участник на сервере!**\n"
+            f"**Пользователь:** {member.mention} ({member.name}#{member.discriminator})\n"
+            f"**ID:** {member.id}\n"
+            f"**Аккаунт создан:** {member.created_at.strftime('%d.%m.%Y %H:%M:%S')}"
+        )
+    
+    await asyncio.sleep(10)
+    if bot.guilds:
+        guild = bot.guilds[0]
+        await update_stats_channels(guild)
+        logger.info(f"Новый участник {member}, статистика обновлена")
+
+@bot.event
+async def on_member_remove(member):
+    if should_log_user(member):
+        add_user_action(
+            member.id,
+            'leave',
+            f"Покинул сервер",
+            target=None,
+            channel=None
+        )
+        
+        log_message = (
+            f"🔴 **Пользователь вышел**\n"
+            f"**Пользователь:** {member.mention} ({member.name}#{member.discriminator}) (ID: {member.id})\n"
+            f"**Присоединился:** {member.joined_at.strftime('%d.%m.%Y %H:%M:%S') if member.joined_at else 'Неизвестно'}\n"
+            f"**Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+        )
+        await send_log(member.guild, log_message)
+        
+        await send_important_notification(
+            PROTECTED_USER_ID,
+            f"🔴 **Пользователь покинул сервер!**\n"
+            f"**Пользователь:** {member.mention} ({member.name}#{member.discriminator})\n"
+            f"**ID:** {member.id}\n"
+            f"**Был на сервере с:** {member.joined_at.strftime('%d.%m.%Y %H:%M:%S') if member.joined_at else 'Неизвестно'}"
+        )
+    
+    await asyncio.sleep(10)
+    if bot.guilds:
+        guild = bot.guilds[0]
+        await update_stats_channels(guild)
+        logger.info(f"Участник {member} вышел, статистика обновлена")
 
 if __name__ == "__main__":
     try:
