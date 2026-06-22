@@ -60,6 +60,9 @@ DM_FORWARD_CHANNEL_ID = 1510687725877989587
 # ID канала для логов фарма
 FARM_LOG_CHANNEL_ID = 1511828459087724624
 
+# ID канала для логов голосовых действий
+VOICE_LOG_CHANNEL_ID = 1518524796223230052
+
 # ID для системы верификации
 VERIFY_ROLE_ID = 1511817283717169284
 VERIFY_CHANNEL_ID = 1511830873258066071
@@ -111,37 +114,37 @@ CHARACTERS = {
     ],
     'support': [
         "Ракета", "Локи", "Джефф", "Луна Сноу",
-        "Женщина Невидимка", "Дэдпул"  # ДОБАВЛЕН Дэдпул в хилы
+        "Женщина Невидимка"
     ]
 }
 
-# СИЛЬНЫЕ И СЛАБЫЕ ДПС
-STRONG_DPS = ["Соколиный Глаз", "Хела", "Человек-Факел", "Железный Человек", "Лунный Рыцарь",
+# СИЛЬНЫЕ И СЛАБЫЕ ДПС (ОБНОВЛЕНЫ)
+STRONG_DPS = ["Хела", "Человек-Факел", "Железный Человек", "Лунный Рыцарь",
               "Нэмор", "Каратель", "Девушка-Белка", "Звёздный Лорд", "Зимний Солдат", 
-              "Росомаха", "Феникс", "Чёрная Пантера", "Сорвиголова"]
+              "Росомаха", "Феникс", "Чёрная Пантера", "Сорвиголова", "Соколиный Глаз"]
 
 WEAK_DPS = ["Шторм", "Псайлок", "Человек-Паук", "Алая Ведьма", "Мистер Фантастик", 
-            "Мэджик", "Дэдпул", "Чёрная Вдова", "Блэйд", "Эльза Бладстоун", "Циклоп"]
+            "Мэджик", "Чёрная Вдова", "Блэйд", "Эльза Бладстоун", "Циклоп"]
 
 SPECIAL_CHARACTERS = {
     'ko_farm_arcade': {
-        'support': ["Дэдпул"]
+        'support': []
     },
     'hybrid_farm': {
-        'support': ["Дэдпул"]
+        'support': []
     },
     'hybrid_arcade': {
-        'support': ["Дэдпул"]
+        'support': []
     },
     'hybrid_arcade_strong': {
-        'support': ["Дэдпул"]
+        'support': []
     }
 }
 
-# ЗАПРЕЩЕННЫЕ ПЕРСОНАЖИ
+# ЗАПРЕЩЕННЫЕ ПЕРСОНАЖИ (Дэдпул удален из хилеров в 336)
 BANNED_CHARACTERS = {
-    'farm_336': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Белая лиса", "Железный кулак", "Гамбит"],
-    'farm_336_arcade': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Белая лиса", "Железный кулак", "Гамбит"],
+    'farm_336': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Белая лиса", "Железный кулак", "Гамбит", "Дэдпул"],
+    'farm_336_arcade': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Белая лиса", "Железный кулак", "Гамбит", "Дэдпул"],
     'farm_222': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Белая лиса", "Железный кулак", "Гамбит"],
     'farm_222_arcade': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Белая лиса", "Железный кулак", "Гамбит"],
     'ko_farm_arcade': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Гамбит"],
@@ -229,7 +232,7 @@ FARM_TYPES = {
             'team2_dps': {'limit': 2, 'emoji': '⚔️', 'display_name': 'ДПС команды 2', 'team': 2}
         }
     },
-    'hybrid_arcade_strong': {  # НОВЫЙ ТИП ФАРМА
+    'hybrid_arcade_strong': {
         'name': 'Гибрид фарм в аркаде!',
         'composition': '2 команды: 1 Сильный ДПС, 1 Слабый ДПС, 2 Саппорта, 2 Танка в каждой',
         'roles': {
@@ -753,6 +756,63 @@ async def send_log(guild, message_content):
             await log_channel.send(embed=embed)
     except Exception as e:
         logger.error(f"Ошибка отправки лога: {e}")
+
+# ============================================
+# ФУНКЦИИ ДЛЯ ЛОГИРОВАНИЯ ГОЛОСОВЫХ ДЕЙСТВИЙ
+# ============================================
+
+async def log_voice_action(guild, action_type, target, moderator, channel_name=None, duration=None):
+    """Отправляет лог о голосовых действиях в канал"""
+    voice_log_channel = bot.get_channel(VOICE_LOG_CHANNEL_ID)
+    if not voice_log_channel:
+        logger.error(f"Канал для логов голосовых действий не найден! ID: {VOICE_LOG_CHANNEL_ID}")
+        return
+    
+    emojis = {
+        'mute': '🔇',
+        'unmute': '🔊',
+        'deafen': '🎧',
+        'undeafen': '🔊',
+        'mass_mute': '🔇',
+        'mass_unmute': '🔊'
+    }
+    
+    emoji = emojis.get(action_type, '🎤')
+    
+    if action_type == 'mass_mute':
+        title = f"{emoji} Массовое отключение микрофонов"
+    elif action_type == 'mass_unmute':
+        title = f"{emoji} Массовое включение микрофонов"
+    elif action_type == 'mute':
+        title = f"{emoji} Пользователь заглушен"
+    elif action_type == 'unmute':
+        title = f"{emoji} Пользователь разглушен"
+    elif action_type == 'deafen':
+        title = f"{emoji} Отключены наушники"
+    elif action_type == 'undeafen':
+        title = f"{emoji} Включены наушники"
+    else:
+        title = f"{emoji} Действие в голосовом канале"
+    
+    embed = discord.Embed(
+        title=title,
+        color=0xff9900 if 'mute' in action_type or 'deafen' in action_type else 0x00ff00,
+        timestamp=datetime.now()
+    )
+    
+    if action_type not in ['mass_mute', 'mass_unmute']:
+        embed.add_field(name="👤 Пользователь", value=target.mention, inline=True)
+        embed.add_field(name="🆔 ID", value=target.id, inline=True)
+    
+    embed.add_field(name="👮 Модератор", value=moderator.mention, inline=True)
+    
+    if channel_name:
+        embed.add_field(name="📢 Канал", value=channel_name, inline=True)
+    
+    if duration:
+        embed.add_field(name="⏰ Длительность", value=duration, inline=True)
+    
+    await voice_log_channel.send(embed=embed)
 
 def should_log_user(user):
     if user.bot:
@@ -2112,13 +2172,13 @@ async def farm_command(ctx):
     
     embed.add_field(
         name="⚔️ Фарм 336 в быстрой игре",
-        value="6 ДПС, 3 Саппорта, 3 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Плащ и Кинжал, Белая лиса, Железный кулак, Гамбит",
+        value="6 ДПС, 3 Саппорта, 3 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Плащ и Кинжал, Белая лиса, Железный кулак, Гамбит, Дэдпул",
         inline=False
     )
     
     embed.add_field(
         name="🎮 Фарм 336 в аркаде",
-        value="6 ДПС, 3 Саппорта, 3 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Плащ и Кинжал, Белая лиса, Железный кулак, Гамбит",
+        value="6 ДПС, 3 Саппорта, 3 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Плащ и Кинжал, Белая лиса, Железный кулак, Гамбит, Дэдпул",
         inline=False
     )
     
@@ -2154,7 +2214,7 @@ async def farm_command(ctx):
     
     embed.add_field(
         name="🔥 Гибрид фарм в аркаде!",
-        value="2 команды: 1 Сильный ДПС, 1 Слабый ДПС, 2 Саппорта, 2 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Плащ и Кинжал, Гамбит\n**⭐ Сильные ДПС:** Соколиный Глаз, Хела, Человек-Факел, Железный Человек, Лунный Рыцарь, Нэмор, Каратель, Девушка-Белка, Звёздный Лорд, Зимний Солдат, Росомаха, Феникс, Чёрная Пантера, Сорвиголова\n**🌙 Слабые ДПС:** Шторм, Псайлок, Человек-Паук, Алая Ведьма, Мистер Фантастик, Мэджик, Дэдпул, Чёрная Вдова, Блэйд, Эльза Бладстоун, Циклоп",
+        value="2 команды: 1 Сильный ДПС, 1 Слабый ДПС, 2 Саппорта, 2 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Плащ и Кинжал, Гамбит\n**⭐ Сильные ДПС:** Хела, Человек-Факел, Железный Человек, Лунный Рыцарь, Нэмор, Каратель, Девушка-Белка, Звёздный Лорд, Зимний Солдат, Росомаха, Феникс, Чёрная Пантера, Сорвиголова, Соколиный Глаз\n**🌙 Слабые ДПС:** Шторм, Псайлок, Человек-Паук, Алая Ведьма, Мистер Фантастик, Мэджик, Чёрная Вдова, Блэйд, Эльза Бладстоун, Циклоп",
         inline=False
     )
     
@@ -2284,7 +2344,7 @@ async def farm_top_command(ctx, limit: int = 10):
     await ctx.send(embed=embed)
 
 # ============================================
-# КОМАНДА ВЕРИФИКАЦИИ (ИСПРАВЛЕНА)
+# КОМАНДА ВЕРИФИКАЦИИ (ОБНОВЛЕНА)
 # ============================================
 
 @bot.command(name='верификация')
@@ -2459,6 +2519,12 @@ async def on_ready():
         logger.info(f"✅ Канал для логов фарма найден: {farm_log_channel.name} (ID: {FARM_LOG_CHANNEL_ID})")
     else:
         logger.error(f"❌ КАНАЛ ДЛЯ ЛОГОВ ФАРМА НЕ НАЙДЕН! ID: {FARM_LOG_CHANNEL_ID}")
+    
+    voice_log_channel = bot.get_channel(VOICE_LOG_CHANNEL_ID)
+    if voice_log_channel:
+        logger.info(f"✅ Канал для логов голосовых действий найден: {voice_log_channel.name} (ID: {VOICE_LOG_CHANNEL_ID})")
+    else:
+        logger.error(f"❌ КАНАЛ ДЛЯ ЛОГОВ ГОЛОСОВЫХ ДЕЙСТВИЙ НЕ НАЙДЕН! ID: {VOICE_LOG_CHANNEL_ID}")
 
 async def restore_active_warnings():
     if not bot.guilds:
@@ -2543,8 +2609,8 @@ async def send_verification_message():
         value="1. Нажмите кнопку **«Создать тикет на верификацию»**\n"
               "2. Укажите ваш IGN (никнейм) в игре Marvel Rivals\n"
               "3. Укажите ваш возраст\n"
-              "4. Как к вам обращаться?\n"
-              "5. Ответьте на вопросы модератора\n"
+              "4. Как к вам обращаться? (Он/Она или ваше имя)\n"
+              "5. После этого ответьте на вопросы модератора\n"
               "6. После проверки вы получите доступ к серверу",
         inline=False
     )
@@ -2699,11 +2765,12 @@ class IGNModal(discord.ui.Modal, title="Ввод IGN"):
         )
         embed.add_field(
             name="❓ Вопросы от модераторов",
-            value="Пожалуйста, ответьте на следующие вопросы:\n\n"
+            value="Пожалуйста, ответьте на следующие вопросы в этом канале:\n\n"
                   "1. **Сколько вам лет?**\n"
-                  "2. **Как к вам обращаться? (Он/Она или имя)**\n\n"
-                  "Напишите ответы на эти вопросы в этом канале.\n"
-                  "Модераторы свяжутся с вами в ближайшее время.",
+                  "2. **Как к вам обращаться? (Он/Она или ваше имя)**\n"
+                  "3. **Был ли у вас опыт лорд фарминга, если да то когда вы последний раз фармили?**\n"
+                  "4. **С какого сезона вы начали играть в Марвел Ривалс?**\n\n"
+                  "Модераторы свяжутся с вами после ответов.",
             inline=False
         )
         
@@ -5105,6 +5172,10 @@ async def members_count(ctx):
     embed.set_footer(text="Сохранены все участники, которые когда-либо заходили на сервер")
     await ctx.send(embed=embed)
 
+# ============================================
+# КОМАНДЫ ГОЛОСОВОГО УПРАВЛЕНИЯ С ЛОГИРОВАНИЕМ
+# ============================================
+
 @bot.command(name='mute')
 async def voice_mute(ctx, member: discord.Member, duration: str = None):
     if not is_moderator(ctx):
@@ -5147,6 +5218,16 @@ async def voice_mute(ctx, member: discord.Member, duration: str = None):
         await ctx.send(embed=embed)
         logger.info(f"Пользователь {member} заглушен в голосовом канале модератором {ctx.author}")
         
+        # Логируем действие
+        await log_voice_action(
+            ctx.guild,
+            'mute',
+            member,
+            ctx.author,
+            member.voice.channel.name,
+            duration
+        )
+        
         if should_log_user(ctx.author):
             add_user_action(
                 ctx.author.id,
@@ -5181,6 +5262,14 @@ async def voice_mute(ctx, member: discord.Member, duration: str = None):
                         try:
                             await member.edit(mute=False)
                             await ctx.send(f"🔊 {member.mention} автоматически разглушен по истечении времени")
+                            await log_voice_action(
+                                ctx.guild,
+                                'unmute',
+                                member,
+                                ctx.author,
+                                member.voice.channel.name if member.voice else None,
+                                "Автоматически"
+                            )
                         except:
                             pass
                     
@@ -5224,6 +5313,15 @@ async def voice_unmute(ctx, member: discord.Member):
         
         await ctx.send(embed=embed)
         logger.info(f"Пользователь {member} разглушен в голосовом канале модератором {ctx.author}")
+        
+        # Логируем действие
+        await log_voice_action(
+            ctx.guild,
+            'unmute',
+            member,
+            ctx.author,
+            member.voice.channel.name if member.voice else None
+        )
         
         if should_log_user(ctx.author):
             add_user_action(
@@ -5289,6 +5387,16 @@ async def voice_deafen(ctx, member: discord.Member, duration: str = None):
         await ctx.send(embed=embed)
         logger.info(f"Пользователю {member} отключены наушники в голосовом канале модератором {ctx.author}")
         
+        # Логируем действие
+        await log_voice_action(
+            ctx.guild,
+            'deafen',
+            member,
+            ctx.author,
+            member.voice.channel.name,
+            duration
+        )
+        
         if should_log_user(ctx.author):
             add_user_action(
                 ctx.author.id,
@@ -5323,6 +5431,14 @@ async def voice_deafen(ctx, member: discord.Member, duration: str = None):
                         try:
                             await member.edit(deafen=False)
                             await ctx.send(f"🔊 {member.mention} автоматически включены наушники по истечении времени")
+                            await log_voice_action(
+                                ctx.guild,
+                                'undeafen',
+                                member,
+                                ctx.author,
+                                member.voice.channel.name if member.voice else None,
+                                "Автоматически"
+                            )
                         except:
                             pass
                     
@@ -5366,6 +5482,15 @@ async def voice_undeafen(ctx, member: discord.Member):
         
         await ctx.send(embed=embed)
         logger.info(f"Пользователю {member} включены наушники в голосовом канале модератором {ctx.author}")
+        
+        # Логируем действие
+        await log_voice_action(
+            ctx.guild,
+            'undeafen',
+            member,
+            ctx.author,
+            member.voice.channel.name if member.voice else None
+        )
         
         if should_log_user(ctx.author):
             add_user_action(
@@ -5426,6 +5551,16 @@ async def mass_mute(ctx, channel: discord.VoiceChannel = None):
     
     await ctx.send(embed=embed)
     logger.info(f"Массовое отключение микрофонов в канале {channel.name} пользователем {ctx.author}")
+    
+    # Логируем массовое действие
+    await log_voice_action(
+        ctx.guild,
+        'mass_mute',
+        None,
+        ctx.author,
+        channel.name,
+        f"{muted_count} пользователей"
+    )
 
 @bot.command(name='mass_unmute')
 async def mass_unmute(ctx, channel: discord.VoiceChannel = None):
@@ -5464,6 +5599,16 @@ async def mass_unmute(ctx, channel: discord.VoiceChannel = None):
     
     await ctx.send(embed=embed)
     logger.info(f"Массовое включение микрофонов в канале {channel.name} пользователем {ctx.author}")
+    
+    # Логируем массовое действие
+    await log_voice_action(
+        ctx.guild,
+        'mass_unmute',
+        None,
+        ctx.author,
+        channel.name,
+        f"{unmuted_count} пользователей"
+    )
 
 @bot.command(name='сбор')
 async def create_farm_event_command(ctx):
@@ -5760,6 +5905,159 @@ async def on_member_remove(member):
         guild = bot.guilds[0]
         await update_stats_channels(guild)
         logger.info(f"Участник {member} вышел, статистика обновлена")
+
+@bot.event
+async def on_member_update(before, after):
+    if not should_log_user(before):
+        return
+    
+    if before.display_name != after.display_name:
+        add_user_action(
+            before.id,
+            'nickname_change',
+            f"Сменил ник с '{before.display_name}' на '{after.display_name}'",
+            target=None,
+            channel=None
+        )
+        
+        if str(before.id) in old_members:
+            old_members[str(before.id)]['display_name'] = after.display_name
+            save_members()
+        
+        issuer = None
+        audit_entry = await get_audit_log_entry(before.guild, discord.AuditLogAction.member_update, target=before)
+        if audit_entry and audit_entry.user:
+            issuer = audit_entry.user
+        
+        issuer_text = f" (ID: {issuer.id})" if issuer else " (Неизвестно)"
+        log_message = (
+            f"👤 **Изменен никнейм**\n"
+            f"**Пользователь:** {after.mention} ({before.name}#{before.discriminator}) (ID: {before.id})\n"
+            f"**Было:** {before.display_name}\n"
+            f"**Стало:** {after.display_name}\n"
+            f"**Кто изменил:** {issuer.mention if issuer else 'Неизвестно'}{issuer_text}\n"
+            f"**Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+        )
+        await send_log(before.guild, log_message)
+    
+    if before.roles != after.roles:
+        added_roles = [role for role in after.roles if role not in before.roles]
+        removed_roles = [role for role in before.roles if role not in after.roles]
+        
+        if added_roles:
+            role_names = ", ".join([role.name for role in added_roles])
+            add_user_action(
+                before.id,
+                'role_added',
+                f"Получил роли: {role_names}",
+                target=None,
+                channel=None
+            )
+            
+            issuer = None
+            audit_entry = await get_audit_log_entry(before.guild, discord.AuditLogAction.member_role_update, target=before)
+            if audit_entry and audit_entry.user:
+                issuer = audit_entry.user
+            
+            issuer_text = f" (ID: {issuer.id})" if issuer else " (Неизвестно)"
+            log_message = (
+                f"➕ **Выданы роли**\n"
+                f"**Пользователь:** {after.mention} ({after.name}#{after.discriminator}) (ID: {after.id})\n"
+                f"**Роли:** {role_names}\n"
+                f"**Кто выдал:** {issuer.mention if issuer else 'Неизвестно'}{issuer_text}\n"
+                f"**Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+            )
+            await send_log(after.guild, log_message)
+        
+        if removed_roles:
+            role_names = ", ".join([role.name for role in removed_roles])
+            add_user_action(
+                before.id,
+                'role_removed',
+                f"Лишен ролей: {role_names}",
+                target=None,
+                channel=None
+            )
+            
+            issuer = None
+            audit_entry = await get_audit_log_entry(before.guild, discord.AuditLogAction.member_role_update, target=before)
+            if audit_entry and audit_entry.user:
+                issuer = audit_entry.user
+            
+            issuer_text = f" (ID: {issuer.id})" if issuer else " (Неизвестно)"
+            log_message = (
+                f"➖ **Сняты роли**\n"
+                f"**Пользователь:** {after.mention} ({after.name}#{after.discriminator}) (ID: {after.id})\n"
+                f"**Роли:** {role_names}\n"
+                f"**Кто снял:** {issuer.mention if issuer else 'Неизвестно'}{issuer_text}\n"
+                f"**Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+            )
+            await send_log(after.guild, log_message)
+
+@bot.event
+async def on_user_update(before, after):
+    if before.bot or before.id == NO_LOG_USER_ID:
+        return
+    
+    if before.name != after.name or before.discriminator != after.discriminator:
+        add_user_action(
+            before.id,
+            'username_change',
+            f"Сменил имя с '{before.name}#{before.discriminator}' на '{after.name}#{after.discriminator}'",
+            target=None,
+            channel=None
+        )
+        
+        if str(before.id) in old_members:
+            old_members[str(before.id)]['name'] = after.name
+            save_members()
+        
+        log_message = (
+            f"👤 **Изменено имя пользователя**\n"
+            f"**Пользователь:** <@{after.id}> ({after.name}#{after.discriminator})\n"
+            f"**Было:** {before.name}#{before.discriminator}\n"
+            f"**Стало:** {after.name}#{after.discriminator}\n"
+            f"**Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+        )
+        for guild in bot.guilds:
+            if guild.get_member(after.id):
+                await send_log(guild, log_message)
+                break
+
+@bot.event
+async def on_voice_state_update(member, before, after):
+    if member.id == PROTECTED_USER_ID:
+        await protect_user_actions(member)
+        return
+    
+    # Логируем изменения в голосовом состоянии
+    if before.mute != after.mute and after.mute is True:
+        # Пользователь был заглушен (кем-то)
+        await log_voice_action(
+            member.guild,
+            'mute',
+            member,
+            member,  # Неизвестно кто заглушил
+            after.channel.name if after.channel else None
+        )
+    
+    if before.deaf != after.deaf and after.deaf is True:
+        await log_voice_action(
+            member.guild,
+            'deafen',
+            member,
+            member,
+            after.channel.name if after.channel else None
+        )
+
+@bot.event
+async def on_presence_update(before, after):
+    if before.status != after.status:
+        await asyncio.sleep(5)
+        if bot.guilds:
+            guild = bot.guilds[0]
+            await update_stats_channels(guild)
+            logger.debug("Статистика обновлена из-за изменения статуса")
 
 if __name__ == "__main__":
     try:
