@@ -80,6 +80,7 @@ TOURNAMENT_CHANNEL_ID = 1518889061832589323
 
 # Антимут
 ANTIMUTE_USER_ID = 981875688061698058
+PROTECTED_USER_ID_ANTIMUTE = 695830072556257280  # Защищенный пользователь для антимута
 antimute_enabled = True
 
 logger.info(f"✅ Загружены настройки из .env файла")
@@ -164,7 +165,7 @@ BANNED_CHARACTERS = {
     'farm_336_arcade': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Белая лиса", "Железный кулак", "Гамбит", "Дэдпул"],
     'farm_222': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Белая лиса", "Железный кулак", "Гамбит"],
     'farm_222_arcade': ["Адам Уорлак", "Альтрон", "Мантис", "Плащ и Кинжал", "Белая лиса", "Железный кулак", "Гамбит"],
-    'ko_farm_arcade': ["Адам Уорлак", "Альтрон", "Мантис", "Гамбит"],
+    'ko_farm_arcade': [],
     'hybrid_farm': ["Адам Уорлак", "Альтрон", "Мантис", "Гамбит"],
     'hybrid_arcade': ["Адам Уорлак", "Альтрон", "Мантис", "Гамбит"],
     'hybrid_arcade_strong': ["Адам Уорлак", "Альтрон", "Мантис", "Гамбит"]
@@ -2204,7 +2205,10 @@ async def farm_command(ctx):
     
     embed.add_field(
         name="🏆 КО фарм в аркаде",
-        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n**Запрещены:** Адам Уорлак, Альтрон, Мантис, Гамбит\n\n**Дополнительные ДПС:** Дэдпул, Чёрная Кошка, Железный Кулак\n**Дополнительные Саппорты:** Гамбит, Мантис, Альтрон, Джубили, Адам Уорлак",
+        value="2 команды: 2 ДПС, 2 Саппорта, 2 Танка\n\n**Доступные персонажи:**\n"
+              "**⚔️ ДПС:** Дэдпул, Чёрная Кошка, Железный Кулак + все стандартные ДПС\n"
+              "**💖 Саппорты:** Гамбит, Мантис, Альтрон, Джубили, Адам Уорлак + все стандартные саппорты\n"
+              "**🛡️ Танки:** Капюшон + все стандартные танки",
         inline=False
     )
     
@@ -2669,7 +2673,7 @@ async def antimute_command(ctx, action: str = None):
         status = "включен" if antimute_enabled else "выключен"
         embed = discord.Embed(
             title="🛡️ Статус антимута",
-            description=f"Антимут для пользователя <@{ANTIMUTE_USER_ID}> **{status}**",
+            description=f"Антимут для защищенного пользователя **{status}**",
             color=0x00ff00 if antimute_enabled else 0xff0000
         )
         await ctx.send(embed=embed)
@@ -2679,7 +2683,7 @@ async def antimute_command(ctx, action: str = None):
         antimute_enabled = True
         embed = discord.Embed(
             title="✅ Антимут включен",
-            description=f"Антимут для пользователя <@{ANTIMUTE_USER_ID}> **включен**",
+            description=f"Антимут для защищенного пользователя **включен**",
             color=0x00ff00
         )
         await ctx.send(embed=embed)
@@ -2688,7 +2692,7 @@ async def antimute_command(ctx, action: str = None):
         antimute_enabled = False
         embed = discord.Embed(
             title="❌ Антимут выключен",
-            description=f"Антимут для пользователя <@{ANTIMUTE_USER_ID}> **выключен**",
+            description=f"Антимут для защищенного пользователя **выключен**",
             color=0xff0000
         )
         await ctx.send(embed=embed)
@@ -5417,7 +5421,7 @@ async def voice_mute(ctx, member: discord.Member, duration: str = None):
         await ctx.send(embed=embed)
         return
     
-    if antimute_enabled and member.id == ANTIMUTE_USER_ID:
+    if antimute_enabled and member.id == PROTECTED_USER_ID_ANTIMUTE:
         embed = discord.Embed(
             title="🛡️ Антимут",
             description="Этот пользователь защищен от мута!",
@@ -5770,7 +5774,7 @@ async def mass_mute(ctx, channel: discord.VoiceChannel = None):
     muted_count = 0
     for member in channel.members:
         if member.id != PROTECTED_USER_ID:
-            if antimute_enabled and member.id == ANTIMUTE_USER_ID:
+            if antimute_enabled and member.id == PROTECTED_USER_ID_ANTIMUTE:
                 continue
             try:
                 await member.edit(mute=True)
