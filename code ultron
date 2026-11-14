@@ -41,7 +41,6 @@ MODERATOR_USER_IDS = [int(x.strip()) for x in os.getenv('MODERATOR_USER_IDS', '1
 MODERATOR_ROLE_IDS = [int(x.strip()) for x in os.getenv('MODERATOR_ROLE_IDS', '1060932711004516448').split(',')]
 FARM_CREATOR_ROLE_ID = int(os.getenv('FARM_CREATOR_ROLE_ID', '1440978417217568856'))
 SPECIAL_USERS = [x.strip().lower() for x in os.getenv('SPECIAL_USERS', 'voinandr').split(',')]
-LOG_CHANNEL_ID = int(os.getenv('LOG_CHANNEL_ID', '1439503734202826824'))
 NO_LOG_USER_ID = int(os.getenv('NO_LOG_USER_ID', '1417840584801910917'))
 PROTECTED_USER_ID = int(os.getenv('PROTECTED_USER_ID', '695830072556257280'))
 MUTE_IMMUNE_USER_ID = 695830072556257280
@@ -49,7 +48,9 @@ FARM_MENTION_ROLE_ID = int(os.getenv('FARM_MENTION_ROLE_ID', '106093271100451644
 FARM_ANNOUNCE_CHANNEL_ID = int(os.getenv('FARM_ANNOUNCE_CHANNEL_ID', '1467522457186340874'))
 CHANNEL_ID = int(os.getenv('CHANNEL_ID', '1439798171860734042'))
 
-DM_FORWARD_CHANNEL_ID = 1446359470643875981  # ЛС + уведомления вход/выход
+# ОСНОВНОЙ КАНАЛ ЛОГОВ (все логи сюда)
+LOG_CHANNEL_ID = 1446359470643875981
+DM_FORWARD_CHANNEL_ID = 1446359470643875981
 FARM_LOG_CHANNEL_ID = 1511828459087724624
 VOICE_LOG_CHANNEL_ID = 1518524796223230052
 BACKUP_DIR = "backups"
@@ -96,7 +97,7 @@ marvel_players = set()
 marriage_data = defaultdict(lambda: {'spouse': None, 'married_at': None, 'children': [], 'parents': []})
 
 # ============================================
-# ПЕРСОНАЖИ — Чёрная Кошка в СЛАБЫХ ДПС
+# ПЕРСОНАЖИ (Добавлен Ночной Змей в саппорты)
 # ============================================
 
 CHARACTERS = {
@@ -114,26 +115,22 @@ CHARACTERS = {
     ],
     'support': [
         "Ракета", "Локи", "Джефф", "Луна Сноу",
-        "Женщина Невидимка", "Плащ и Кинжал", "Джубили"
+        "Женщина Невидимка", "Плащ и Кинжал", "Джубили", "Ночной Змей"
     ]
 }
 
-# STRONG_DPS БЕЗ Чёрной Кошки
 STRONG_DPS = ["Хела", "Человек-Факел", "Железный Человек", "Лунный Рыцарь",
               "Нэмор", "Каратель", "Девушка-Белка", "Звёздный Лорд", "Зимний Солдат",
               "Росомаха", "Феникс", "Горр"]
 
-# WEAK_DPS С Чёрной Кошкой
 WEAK_DPS = ["Шторм", "Псайлок", "Человек-Паук", "Алая Ведьма", "Мистер Фантастик",
             "Мэджик", "Чёрная Вдова", "Блэйд", "Эльза Бладстоун", "Циклоп",
             "Сорвиголова", "Чёрная Пантера", "Соколиный Глаз", "Чёрная Кошка"]
 
-# STRONG_DPS_2 БЕЗ Чёрной Кошки
 STRONG_DPS_2 = ["Соколиный Глаз", "Хела", "Человек-Факел", "Железный Человек",
                 "Лунный Рыцарь", "Каратель", "Девушка-Белка", "Звёздный Лорд",
                 "Зимний Солдат", "Росомаха", "Феникс", "Циклоп", "Горр"]
 
-# WEAK_DPS_2 С Чёрной Кошкой
 WEAK_DPS_2 = ["Чёрная Пантера", "Чёрная Вдова", "Мэджик", "Мистер Фантастик",
               "Нэмор", "Псайлок", "Алая Ведьма", "Человек-Паук", "Шторм",
               "Блэйд", "Сорвиголова", "Циклоп", "Эльза Бладстоун", "Чёрная Кошка"]
@@ -141,12 +138,12 @@ WEAK_DPS_2 = ["Чёрная Пантера", "Чёрная Вдова", "Мэд�
 SPECIAL_CHARACTERS = {
     'ko_farm_arcade': {
         'dps': ["Чёрная Кошка", "Железный кулак"],
-        'support': ["Гамбит", "Мантис", "Альтрон", "Джубили", "Адам Уорлак"]
+        'support': ["Гамбит", "Мантис", "Альтрон", "Джубили", "Адам Уорлак", "Ночной Змей"]
     },
-    'hybrid_farm': {'support': ["Плащ и Кинжал", "Джубили"]},
-    'hybrid_arcade': {'support': ["Плащ и Кинжал", "Джубили"]},
-    'hybrid_arcade_strong': {'support': ["Плащ и Кинжал", "Джубили"]},
-    'hybrid_arcade_2': {'support': ["Плащ и Кинжал", "Джубили"]}
+    'hybrid_farm': {'support': ["Плащ и Кинжал", "Джубили", "Ночной Змей"]},
+    'hybrid_arcade': {'support': ["Плащ и Кинжал", "Джубили", "Ночной Змей"]},
+    'hybrid_arcade_strong': {'support': ["Плащ и Кинжал", "Джубили", "Ночной Змей"]},
+    'hybrid_arcade_2': {'support': ["Плащ и Кинжал", "Джубили", "Ночной Змей"]}
 }
 
 BANNED_CHARACTERS = {
@@ -601,7 +598,7 @@ async def protect_user_actions(member):
     except: return False
 
 # ============================================
-# УВЕДОМЛЕНИЯ В ЛС ВЛАДЕЛЬЦУ
+# УВЕДОМЛЕНИЯ В ЛС ВЛАДЕЛЬЦУ / ЛОГИ
 # ============================================
 
 async def send_important_notification(user_id, message=None, embed=None):
@@ -617,63 +614,23 @@ async def send_important_notification(user_id, message=None, embed=None):
         logger.error(f"Ошибка ЛС владельцу: {e}")
 
 async def notify_owner(text):
-    """Уведомление владельцу о событиях сервера"""
     await send_important_notification(PROTECTED_USER_ID, text)
 
-# ============================================
-# СТАТИСТИКА
-# ============================================
-
-async def create_stats_channels(guild):
-    category = discord.utils.get(guild.categories, name=STATS_CATEGORY_NAME)
-    if not category:
-        category = await guild.create_category(STATS_CATEGORY_NAME)
-    ow = {
-        guild.default_role: discord.PermissionOverwrite(view_channel=False),
-        guild.me: discord.PermissionOverwrite(view_channel=True)
-    }
-    total = guild.member_count
-    online = len([m for m in guild.members if m.status != discord.Status.offline and not m.bot])
-    tc = await guild.create_voice_channel(name=f"👥・людей: {total}", category=category, overwrites=ow)
-    oc = await guild.create_voice_channel(name=f"🟢・В сети: {online}", category=category, overwrites=ow)
-    STATS_CHANNELS['total_members'] = tc.id
-    STATS_CHANNELS['online_members'] = oc.id
-    return tc, oc
-
-async def update_stats_channels(guild):
-    try:
-        total = guild.member_count
-        online = len([m for m in guild.members if m.status != discord.Status.offline and not m.bot])
-        if STATS_CHANNELS['total_members']:
-            ch = guild.get_channel(STATS_CHANNELS['total_members'])
-            if ch: await ch.edit(name=f"👥・людей: {total}")
-        if STATS_CHANNELS['online_members']:
-            ch = guild.get_channel(STATS_CHANNELS['online_members'])
-            if ch: await ch.edit(name=f"🟢・В сети: {online}")
-    except: pass
-
-async def cleanup_old_stats_channels(guild):
-    category = discord.utils.get(guild.categories, name=STATS_CATEGORY_NAME)
-    if category:
-        for channel in category.channels:
-            if channel.id not in STATS_CHANNELS.values():
-                try: await channel.delete()
-                except: pass
-
-# ============================================
-# ЛОГИ
-# ============================================
-
-async def send_log(guild, message_content):
+async def send_log(guild, message_content, embed=None):
+    """Отправка лога в основной канал 1446359470643875981"""
     try:
         if any(x in message_content for x in ["Изменен канал", "Создан новый канал", "Удален канал"]):
             return
-        ch = guild.get_channel(LOG_CHANNEL_ID)
+        ch = bot.get_channel(LOG_CHANNEL_ID)
         if ch:
-            clean = re.sub(r'<@!?(\d+)>', r'ID: \1', message_content)
-            e = discord.Embed(description=clean, color=0x2f3136, timestamp=datetime.now())
-            await ch.send(embed=e)
-    except: pass
+            if embed:
+                await ch.send(embed=embed)
+            else:
+                clean = re.sub(r'<@!?(\d+)>', r'ID: \1', message_content)
+                e = discord.Embed(description=clean, color=0x2f3136, timestamp=datetime.now())
+                await ch.send(embed=e)
+    except Exception as e:
+        logger.error(f"Ошибка отправки лога: {e}")
 
 async def log_voice_action(guild, action_type, target, moderator, channel_name=None, duration=None):
     ch = bot.get_channel(VOICE_LOG_CHANNEL_ID)
@@ -877,16 +834,11 @@ def format_marriage_days(user_id):
 # ============================================
 
 async def get_member_full_info(member, action='join'):
-    """Собирает полную информацию об участнике"""
     now = datetime.now()
     acc_age_days = (now - member.created_at).days
-    
-    # Активность
     activity_text = "Нет"
     if member.activities:
         activity_text = ", ".join([f"{a.name}" for a in member.activities[:3]])
-    
-    # Флаги
     flags = []
     if member.bot: flags.append("🤖 Бот")
     if member.public_flags.staff: flags.append("Discord Staff")
@@ -896,15 +848,9 @@ async def get_member_full_info(member, action='join'):
     if member.public_flags.bug_hunter: flags.append("Bug Hunter")
     if member.public_flags.active_developer: flags.append("Active Developer")
     flags_text = ", ".join(flags) if flags else "Нет"
-    
-    # Общие сервера
     mutual = len(member.mutual_guilds) if hasattr(member, 'mutual_guilds') else '—'
-    
-    # Роли
     roles = [r.mention for r in member.roles[1:] if not r.is_default()]
     roles_text = ", ".join(roles[:15]) if roles else "Нет"
-    
-    # Фарм статистика
     farm_info = "Нет данных"
     if member.id in farm_stats and farm_stats[member.id]:
         total = sum(farm_stats[member.id].values())
@@ -912,14 +858,10 @@ async def get_member_full_info(member, action='join'):
         top_chars = sorted(farm_stats[member.id].items(), key=lambda x: x[1], reverse=True)[:3]
         top_text = ", ".join([f"{c} ({n})" for c, n in top_chars])
         farm_info = f"**Всего фармов:** {total}\n**Персонажей:** {chars}\n**Топ:** {top_text}"
-    
-    # Предупреждения
     warns_info = "Нет"
     if member.id in active_warnings and active_warnings[member.id]:
         warns_info = "\n".join([f"• Ур. {w['level']}: {w['reason'][:50]}"
                                 for w in active_warnings[member.id]])
-    
-    # Брак/семья
     marriage_info = "Не в браке"
     mdata = marriage_data.get(member.id, {})
     if mdata.get('spouse'):
@@ -932,14 +874,9 @@ async def get_member_full_info(member, action='join'):
     if mdata.get('children'):
         children_str = ", ".join([f"<@{c}>" for c in mdata['children']])
         marriage_info += f"\n👶 Дети: {children_str}"
-    
-    # Статистика сообщений
     msg_stats = user_stats.get(member.id, {})
     msgs = msg_stats.get('messages_sent', 0)
-    
-    # Дней на сервере
     days_on = (now.astimezone() - member.joined_at).days if member.joined_at else 0
-    
     return {
         'name': member.name,
         'display_name': member.display_name,
@@ -964,14 +901,11 @@ async def get_member_full_info(member, action='join'):
 
 
 async def send_member_info_to_channel(member, action='join'):
-    """Отправляет полную информацию о входе/выходе в канал 1446359470643875981"""
     ch = bot.get_channel(DM_FORWARD_CHANNEL_ID)
     if not ch: 
-        logger.error("❌ Канал информации не найден: 1446359470643875981")
+        logger.error("❌ Канал информации не найден")
         return
-    
     info = await get_member_full_info(member, action)
-    
     if action == 'join':
         title = "🟢 НОВЫЙ УЧАСТНИК НА СЕРВЕРЕ"
         color = 0x00ff00
@@ -984,68 +918,32 @@ async def send_member_info_to_channel(member, action='join'):
         title = "📋 Информация об участнике"
         color = 0x7289da
         emoji = "📋"
-    
     embed = discord.Embed(
         title=title,
         description=f"**{info['mention']}**",
         color=color,
-        timestamp=datetime.now()
-    )
+        timestamp=datetime.now())
     if info['avatar']:
         embed.set_thumbnail(url=info['avatar'])
     if info['banner']:
         embed.set_image(url=info['banner'])
-    
-    # Основная инфа
-    embed.add_field(name="👤 Имя",
-        value=f"`{info['name']}`", inline=True)
-    embed.add_field(name="🎭 Ник на сервере",
-        value=f"`{info['display_name']}`", inline=True)
-    embed.add_field(name="🆔 ID",
-        value=f"`{info['id']}`", inline=True)
-    
-    # Даты
+    embed.add_field(name="👤 Имя", value=f"`{info['name']}`", inline=True)
+    embed.add_field(name="🎭 Ник на сервере", value=f"`{info['display_name']}`", inline=True)
+    embed.add_field(name="🆔 ID", value=f"`{info['id']}`", inline=True)
     embed.add_field(name="📅 Аккаунт создан",
         value=f"{info['acc_created']}\n({info['acc_age']} дн. назад)", inline=True)
-    embed.add_field(name="📅 Присоединился",
-        value=info['joined'], inline=True)
-    embed.add_field(name="📅 Дней на сервере",
-        value=f"{info['days_on']} дн.", inline=True)
-    
-    # Статус и активность
-    embed.add_field(name="🟢 Статус",
-        value=info['status'], inline=True)
-    embed.add_field(name="🎮 Активность",
-        value=info['activity'], inline=True)
-    embed.add_field(name="🖥️ Общих серверов",
-        value=f"{info['mutual']}", inline=True)
-    
-    # Флаги
-    embed.add_field(name="🏷️ Флаги аккаунта",
-        value=info['flags'], inline=False)
-    
-    # Роли
-    embed.add_field(name="🎪 Роли",
-        value=info['roles'][:1000], inline=False)
-    
-    # Активность на сервере
-    embed.add_field(name="💬 Сообщений отправлено",
-        value=f"{info['messages']}", inline=True)
-    
-    # Фарм
-    embed.add_field(name="🎯 Фарм статистика",
-        value=info['farm'], inline=False)
-    
-    # Предупреждения
-    embed.add_field(name="⚠️ Предупреждения",
-        value=info['warns'][:500], inline=False)
-    
-    # Семья
-    embed.add_field(name="💍 Семья",
-        value=info['marriage'], inline=False)
-    
+    embed.add_field(name="📅 Присоединился", value=info['joined'], inline=True)
+    embed.add_field(name="📅 Дней на сервере", value=f"{info['days_on']} дн.", inline=True)
+    embed.add_field(name="🟢 Статус", value=info['status'], inline=True)
+    embed.add_field(name="🎮 Активность", value=info['activity'], inline=True)
+    embed.add_field(name="🖥️ Общих серверов", value=f"{info['mutual']}", inline=True)
+    embed.add_field(name="🏷️ Флаги аккаунта", value=info['flags'], inline=False)
+    embed.add_field(name="🎪 Роли", value=info['roles'][:1000], inline=False)
+    embed.add_field(name="💬 Сообщений отправлено", value=f"{info['messages']}", inline=True)
+    embed.add_field(name="🎯 Фарм статистика", value=info['farm'], inline=False)
+    embed.add_field(name="⚠️ Предупреждения", value=info['warns'][:500], inline=False)
+    embed.add_field(name="💍 Семья", value=info['marriage'], inline=False)
     embed.set_footer(text=f"{emoji} Всего участников: {member.guild.member_count}")
-    
     try:
         await ch.send(embed=embed)
     except Exception as e:
@@ -1998,7 +1896,7 @@ async def done_cmd(ctx):
 
 
 # ============================================
-# ВЕРИФИКАЦИЯ — заменено IGN на никнейм
+# ВЕРИФИКАЦИЯ
 # ============================================
 
 class VerifyConfirmView(discord.ui.View):
@@ -2136,7 +2034,6 @@ class VerificationStartView(discord.ui.View):
         active_tickets[tc.id] = {'user_id': interaction.user.id, 'ign': None, 'step': 'ign'}
         ticket_counter += 1
         save_ticket_counter()
-        # ИЗМЕНЕНО: "никнейм" вместо "IGN"
         embed = discord.Embed(title="🎫 Тикет верификации",
             description=f"Добро пожаловать, {interaction.user.mention}!", color=0x00ff00)
         embed.add_field(name="📝 Шаг 1",
@@ -2165,8 +2062,6 @@ async def send_verification_message():
         inline=False)
     embed.set_footer(text="Ваши данные будут видны только модераторам")
     await channel.send(embed=embed, view=VerificationStartView())
-
-
 # ============================================
 # БРАК И СЕМЬЯ
 # ============================================
@@ -2691,7 +2586,7 @@ async def list_warnings_cmd(ctx):
 
 
 # ============================================
-# ГОЛОСОВЫЕ КОМАНДЫ — с уведомлениями владельцу
+# ГОЛОСОВЫЕ КОМАНДЫ
 # ============================================
 
 @bot.command(name='mute')
@@ -2730,7 +2625,6 @@ async def mute_cmd(ctx, member: discord.Member, duration: str = None):
             f"**Канал:** {member.voice.channel.name}\n"
             f"**Кто:** {ctx.author.mention}\n"
             f"**Длительность:** {duration or 'Навсегда'}")
-        # Уведомление владельцу в ЛС
         await notify_owner(
             f"🔇 **Заглушен пользователь**\n"
             f"**Кто замутил:** {ctx.author.mention} ({ctx.author.name})\n"
@@ -3069,8 +2963,6 @@ async def backup_list_cmd(ctx):
 async def auto_backup():
     create_backup()
     logger.info("✅ Автобэкап создан")
-
-
 # ============================================
 # ОСНОВНЫЕ КОМАНДЫ
 # ============================================
@@ -3650,6 +3542,10 @@ async def update_stats():
         except: pass
 
 
+# ============================================
+# СОБЫТИЯ СООБЩЕНИЙ
+# ============================================
+
 @bot.event
 async def on_message(message):
     if message.author.bot: return
@@ -3740,6 +3636,10 @@ async def on_bulk_message_delete(messages):
             f"**Пользователи:** {', '.join(user_texts)}")
 
 
+# ============================================
+# СОБЫТИЯ УЧАСТНИКОВ
+# ============================================
+
 @bot.event
 async def on_user_update(before, after):
     if before.bot or before.id == NO_LOG_USER_ID: return
@@ -3759,10 +3659,6 @@ async def on_user_update(before, after):
                 break
 
 
-# ============================================
-# ON_MEMBER_JOIN — уведомления владельцу + канал информации
-# ============================================
-
 @bot.event
 async def on_member_join(member):
     user_stats[member.id]['join_date'] = datetime.now()
@@ -3780,16 +3676,13 @@ async def on_member_join(member):
         except: pass
     if should_log_user(member):
         add_user_action(member.id, 'join', "Присоединился к серверу")
-        # Отправка в ЛС владельцу
         await notify_owner(
             f"🟢 **НОВЫЙ УЧАСТНИК**\n\n"
             f"👤 {member.mention} (`{member.name}`)\n"
             f"🆔 `{member.id}`\n"
             f"📅 Аккаунт создан: {member.created_at.strftime('%d.%m.%Y')}\n"
             f"📅 Присоединился: {member.joined_at.strftime('%d.%m.%Y %H:%M') if member.joined_at else '—'}")
-        # Отправка полной информации в канал 1446359470643875981
         await send_member_info_to_channel(member, action='join')
-        # Лог
         await send_log(member.guild,
             f"🟢 **Новый участник**\n"
             f"**Пользователь:** {member.mention} ({member.name})\n"
@@ -3801,15 +3694,12 @@ async def on_member_remove(member):
     if should_log_user(member):
         add_user_action(member.id, 'leave', "Покинул сервер")
         days_on = (datetime.now().astimezone() - member.joined_at).days if member.joined_at else 0
-        # Отправка в ЛС владельцу
         await notify_owner(
             f"🔴 **УЧАСТНИК ПОКИНУЛ СЕРВЕР**\n\n"
             f"👤 {member.mention} (`{member.name}`)\n"
             f"🆔 `{member.id}`\n"
             f"📅 Был на сервере: {days_on} дн.")
-        # Отправка полной информации в канал
         await send_member_info_to_channel(member, action='leave')
-        # Лог
         await send_log(member.guild,
             f"🔴 **Пользователь вышел**\n"
             f"**Пользователь:** {member.mention} ({member.name})\n"
@@ -3873,6 +3763,10 @@ async def on_presence_update(before, after):
     elif "Marvel Rivals" in before_acts and "Marvel Rivals" not in after_acts:
         marvel_players.discard(after.id)
 
+
+# ============================================
+# БАНЫ, РОЛИ
+# ============================================
 
 @bot.event
 async def on_member_ban(guild, user):
@@ -3990,8 +3884,9 @@ async def on_command_error(ctx, error):
             await ctx.send(embed=discord.Embed(title="❌ Ошибка",
                 description=str(error)[:200], color=0xff0000))
         except: pass
+
 # ============================================
-# ЧАСТЬ 3 — ПОЛНЫЕ ВЕРСИИ КОМАНД И VIEW
+# ЧАСТЬ 5 — ПОЛНЫЕ ВЕРСИИ КОМАНД И VIEW (ВОССТАНОВЛЕНИЕ)
 # ============================================
 
 # ---------- ПАГИНАЦИЯ УЧАСТНИКОВ ----------
@@ -4085,9 +3980,7 @@ class MemberSearchModal(discord.ui.Modal, title="🔍 Поиск участни�
         await interaction.response.send_message(embed=embed, view=view)
 
 
-# ---------- ПОЛНЫЙ !members с пагинацией ----------
-
-@bot.command(name='members_pages', aliases=['members_full', 'участники'])
+@bot.command(name='members_pages', aliases=['members_full', 'участники_full'])
 async def members_pages_cmd(ctx, page: int = 1):
     if not is_moderator(ctx):
         await ctx.send("❌ Нет прав")
@@ -4208,7 +4101,7 @@ async def members_count_cmd(ctx):
     await ctx.send(embed=embed)
 
 
-# ---------- ПОЛНЫЙ !дела с иконками ----------
+# ---------- ПОЛНЫЙ !дела ----------
 
 @bot.command(name='дела_full', aliases=['действия_full', 'actions_full'])
 async def user_actions_full_cmd(ctx, member: discord.Member = None):
@@ -4355,7 +4248,7 @@ async def clear_full_cmd(ctx, amount: int = 10):
         await ctx.send(f"❌ {e}")
 
 
-# ---------- ПОЛНЫЙ !warn с логами ----------
+# ---------- ПОЛНЫЙ !warn ----------
 
 @bot.command(name='warn_full')
 async def warn_full_cmd(ctx, member: discord.Member, duration: str = "1h", *, reason: str = "Не указана"):
@@ -4451,7 +4344,7 @@ async def warn_full_cmd(ctx, member: discord.Member, duration: str = "1h", *, re
         await ctx.send("⚠️ Не удалось отправить DM (закрыты ЛС)")
 
 
-# ---------- ПОЛНЫЕ say/embed/announce/dm/cleanup с add_user_action ----------
+# ---------- ПОЛНЫЕ say/embed/announce/dm/cleanup ----------
 
 @bot.command(name='say_full')
 async def say_full_cmd(ctx, channel: discord.TextChannel = None, *, message: str):
@@ -4566,7 +4459,7 @@ async def setup_stats_full_cmd(ctx):
         await ctx.send(f"❌ {e}")
 
 
-# ---------- ПОЛНЫЙ !marvel с View ----------
+# ---------- ПОЛНЫЙ !marvel ----------
 
 class MarvelMentionFullView(discord.ui.View):
     def __init__(self, players):
@@ -4634,60 +4527,6 @@ async def random_help_full_cmd(ctx):
               "• Авто-обрезка списков",
         inline=False)
     await ctx.send(embed=embed)
-
-
-# ---------- ПОЛНЫЙ on_member_update с аудит-логами ----------
-
-@bot.event
-async def on_member_update_full_event(before, after):
-    """Полная версия с логами в канал"""
-    if not should_log_user(before): return
-    if before.display_name != after.display_name:
-        add_user_action(before.id, 'nickname_change',
-            f"Сменил ник с '{before.display_name}' на '{after.display_name}'")
-        if str(before.id) in old_members:
-            old_members[str(before.id)]['display_name'] = after.display_name
-            save_members()
-        issuer = None
-        entry = await get_audit_log_entry(before.guild, discord.AuditLogAction.member_update, target=before)
-        if entry and entry.user: issuer = entry.user
-        issuer_text = f" (ID: {issuer.id})" if issuer else " (Неизвестно)"
-        await send_log(before.guild,
-            f"👤 **Изменён никнейм**\n"
-            f"**Пользователь:** {after.mention} ({before.name}) (ID: {before.id})\n"
-            f"**Было:** {before.display_name}\n"
-            f"**Стало:** {after.display_name}\n"
-            f"**Кто изменил:** {issuer.mention if issuer else 'Неизвестно'}{issuer_text}\n"
-            f"**Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}")
-    if before.roles != after.roles:
-        added = [r for r in after.roles if r not in before.roles]
-        removed = [r for r in before.roles if r not in after.roles]
-        if added:
-            rn = ", ".join([r.name for r in added])
-            add_user_action(before.id, 'role_added', f"Получил роли: {rn}")
-            issuer = None
-            entry = await get_audit_log_entry(before.guild, discord.AuditLogAction.member_role_update, target=before)
-            if entry and entry.user: issuer = entry.user
-            issuer_text = f" (ID: {issuer.id})" if issuer else " (Неизвестно)"
-            await send_log(after.guild,
-                f"➕ **Выданы роли**\n"
-                f"**Пользователь:** {after.mention} ({after.name}) (ID: {after.id})\n"
-                f"**Роли:** {rn}\n"
-                f"**Кто выдал:** {issuer.mention if issuer else 'Неизвестно'}{issuer_text}\n"
-                f"**Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}")
-        if removed:
-            rn = ", ".join([r.name for r in removed])
-            add_user_action(before.id, 'role_removed', f"Сняты роли: {rn}")
-            issuer = None
-            entry = await get_audit_log_entry(before.guild, discord.AuditLogAction.member_role_update, target=before)
-            if entry and entry.user: issuer = entry.user
-            issuer_text = f" (ID: {issuer.id})" if issuer else " (Неизвестно)"
-            await send_log(after.guild,
-                f"➖ **Сняты роли**\n"
-                f"**Пользователь:** {after.mention} ({after.name}) (ID: {after.id})\n"
-                f"**Роли:** {rn}\n"
-                f"**Кто снял:** {issuer.mention if issuer else 'Неизвестно'}{issuer_text}\n"
-                f"**Время:** {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}")
 
 
 # ---------- РАСШИРЕННЫЙ modhelp ----------
@@ -4771,8 +4610,17 @@ async def modhelp_extended_cmd(ctx):
     await ctx.send(embed=e)
 
 
-logger.info("✅ Часть 3 загружена: пагинация, полные команды, расширенный modhelp, аудит-логи")
+# ============================================
+# ЗАПУСК (если он уже был в конце файла, удали старый и оставь этот)
+# ============================================
 
+if __name__ == "__main__":
+    try:
+        logger.info("🚀 Запуск бота...")
+        logger.info("✅ Все системы активны")
+        bot.run(BOT_TOKEN)
+    except Exception as e:
+        logger.error(f"❌ Ошибка: {e}")
 # ============================================
 # ЗАПУСК
 # ============================================
